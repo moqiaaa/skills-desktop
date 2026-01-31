@@ -5,10 +5,25 @@ import './i18n'
 import App from './App.tsx'
 import ErrorBoundary from './components/common/ErrorBoundary.tsx'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-        <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+console.log('main.tsx loaded');
+
+const rootElement = document.getElementById('root');
+console.log('Root element:', rootElement);
+
+if (rootElement) {
+  console.log('Creating React root...');
+  try {
+    createRoot(rootElement).render(
+      <StrictMode>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+    console.log('React app rendered');
+  } catch (error) {
+    console.error('React render error:', error);
+  }
+} else {
+  console.error('Root element not found!');
+}

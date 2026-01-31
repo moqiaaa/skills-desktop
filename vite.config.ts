@@ -4,4 +4,24 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  
+  // Prevent vite from obscuring rust errors
+  clearScreen: false,
+  
+  server: {
+    port: 5173,
+    strictPort: true,
+    watch: {
+      // Tell Vite to ignore watching `src-tauri`
+      ignored: ['**/src-tauri/**'],
+    },
+    // Proxy API requests to bypass CORS in development
+    proxy: {
+      '/api': {
+        target: 'https://skills.lc',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
+  },
 })

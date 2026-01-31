@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillStore } from '../store/useSkillStore';
 import { Download, Search, Star, ExternalLink, Check, Loader2, Shield, ShieldCheck, ShieldAlert, X, CheckSquare, Square, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Sparkles } from 'lucide-react';
@@ -29,6 +29,7 @@ const Marketplace = () => {
   const { t, i18n } = useTranslation();
   const {
     marketplaceSkills,
+    marketplaceTotal,
     fetchMarketplaceSkills,
     installSkill,
     installedSkills,
@@ -46,13 +47,34 @@ const Marketplace = () => {
     message: '',
     type: 'info'
   });
-  const pageSize = 12;
+  const pageSize = 20;  // Match API limit
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Fetch skills from API on mount
   useEffect(() => {
-    if (marketplaceSkills.length === 0) {
-        fetchMarketplaceSkills();
-    }
+    console.log('[Marketplace Component] Mounted, calling fetchMarketplaceSkills...');
+    fetchMarketplaceSkills();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search - call API when search term changes
+  const handleSearch = useCallback((query: string) => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      console.log('[Marketplace] Searching for:', query);
+      setPage(1);  // Reset to first page on new search
+      fetchMarketplaceSkills(query, 1);
+    }, 300);  // 300ms debounce
+  }, [fetchMarketplaceSkills]);
+
+  // Handle page change
+  const handlePageChange = useCallback((newPage: number) => {
+    setPage(newPage);
+    fetchMarketplaceSkills(searchTerm, newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [fetchMarketplaceSkills, searchTerm]);
 
   const toggleBatchSelect = (skillId: string) => {
     setBatchSelectedSkills(prev =>
@@ -231,14 +253,9 @@ const Marketplace = () => {
     return installedSkills.some(s => s.id === skillId);
   };
 
-  const filteredSkills = marketplaceSkills.filter(skill =>
-    skill.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    skill.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    skill.author.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const totalPages = Math.ceil(filteredSkills.length / pageSize);
-  const currentSkills = filteredSkills.slice((page - 1) * pageSize, page * pageSize);
+  // Use skills directly from API (already filtered and paginated)
+  const currentSkills = marketplaceSkills;
+  const totalPages = Math.ceil(marketplaceTotal / pageSize);
 
   const getPageNumbers = () => {
     const pages = [];
@@ -366,7 +383,7 @@ const Marketplace = () => {
           </p>
           <div className="flex items-center gap-3 mt-2">
             <span className="stat-badge bg-primary/10 text-primary">
-              {marketplaceSkills.length} {i18n.language === 'zh' ? '个 Skills' : 'Skills'}
+              {marketplaceTotal} {i18n.language === 'zh' ? '个 Skills' : 'Skills'}
             </span>
             <span className="stat-badge bg-success/10 text-success">
               {installedSkills.length} {i18n.language === 'zh' ? '已安装' : 'Installed'}
@@ -402,8 +419,9 @@ const Marketplace = () => {
               placeholder={t('searchSkills')}
               value={searchTerm}
               onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
+                const value = e.target.value;
+                setSearchTerm(value);
+                handleSearch(value);
               }}
             />
           </div>
@@ -581,21 +599,15 @@ const Marketplace = () => {
               <div className="flex items-center gap-1 bg-base-200 p-1.5 rounded-2xl">
                 <button
                   className="btn btn-sm btn-ghost rounded-xl"
-                  disabled={page === 1}
-                  onClick={() => {
-                    setPage(1);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
+                  disabled={page === 1 || isLoading}
+                  onClick={() => handlePageChange(1)}
                 >
                   <ChevronsLeft size={16} />
                 </button>
                 <button
                   className="btn btn-sm btn-ghost rounded-xl"
-                  disabled={page === 1}
-                  onClick={() => {
-                    setPage(p => Math.max(1, p - 1));
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
+                  disabled={page === 1 || isLoading}
+                  onClick={() => handlePageChange(Math.max(1, page - 1))}
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -609,10 +621,8 @@ const Marketplace = () => {
                           ? 'btn-primary shadow-lg shadow-primary/25'
                           : 'btn-ghost'
                       }`}
-                      onClick={() => {
-                        setPage(pageNum);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
+                      disabled={isLoading}
+                      onClick={() => handlePageChange(pageNum)}
                     >
                       {pageNum}
                     </button>
@@ -621,21 +631,15 @@ const Marketplace = () => {
 
                 <button
                   className="btn btn-sm btn-ghost rounded-xl"
-                  disabled={page === totalPages}
-                  onClick={() => {
-                    setPage(p => Math.min(totalPages, p + 1));
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
+                  disabled={page === totalPages || isLoading}
+                  onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                 >
                   <ChevronRight size={16} />
                 </button>
                 <button
                   className="btn btn-sm btn-ghost rounded-xl"
-                  disabled={page === totalPages}
-                  onClick={() => {
-                    setPage(totalPages);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
+                  disabled={page === totalPages || isLoading}
+                  onClick={() => handlePageChange(totalPages)}
                 >
                   <ChevronsRight size={16} />
                 </button>

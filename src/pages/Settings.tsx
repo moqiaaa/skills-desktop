@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillStore } from '../store/useSkillStore';
-import { Plus, X, FolderOpen, ExternalLink, Package, Check, Cpu, Settings2, Palette, AlertTriangle, Globe, Link2, Link2Off, RefreshCw, Monitor, CheckCircle2, Github, Heart, MessageCircle, Terminal } from 'lucide-react';
+import { Plus, X, FolderOpen, ExternalLink, Package, Check, Cpu, Settings2, Palette, AlertTriangle, Globe, Link2, Link2Off, RefreshCw, Monitor, CheckCircle2, Github, Heart, MessageCircle, Terminal, Key, Server, Eye, EyeOff, Save, RotateCcw, Play } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 const agentColors: Record<string, string> = {
@@ -38,17 +38,29 @@ const Settings = () => {
     createSymlink,
     createAllSymlinks,
     removeSymlink,
-    getPlatformInfo
+    getPlatformInfo,
+    apiUrl,
+    apiKey,
+    setApiUrl,
+    setApiKey,
+    fetchMarketplaceSkills
   } = useSkillStore();
   const [paths, setPaths] = useState<string[]>([]);
   const [newPath, setNewPath] = useState('');
   const [isCreatingSymlinks, setIsCreatingSymlinks] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  
+  // API Settings local state
+  const [localApiUrl, setLocalApiUrl] = useState('');
+  const [localApiKey, setLocalApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiSaved, setApiSaved] = useState(false);
 
   // Collapse states
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     native: false,
     symlink: true,
+    api: true,
     install: false,
     paths: false,
     appearance: false,
@@ -65,6 +77,12 @@ const Settings = () => {
     checkSymlinkStatus();
     getPlatformInfo();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialize local API settings from store
+  useEffect(() => {
+    setLocalApiUrl(apiUrl);
+    setLocalApiKey(apiKey);
+  }, [apiUrl, apiKey]);
 
   useEffect(() => {
     setPaths(projectPaths);
@@ -130,6 +148,74 @@ const Settings = () => {
 
   const getSymlinkStatus = (agentId: string) => {
     return symlinkStatuses.find(s => s.agentId === agentId);
+  };
+
+  const handleSaveApiSettings = () => {
+    setApiUrl(localApiUrl.trim());
+    setApiKey(localApiKey.trim());
+    setApiSaved(true);
+    // Refresh marketplace with new settings
+    setTimeout(() => {
+      fetchMarketplaceSkills();
+      setApiSaved(false);
+    }, 1000);
+  };
+
+  const handleResetApiSettings = () => {
+    setLocalApiUrl('');
+    setLocalApiKey('');
+    setApiUrl('');
+    setApiKey('');
+    setApiSaved(true);
+    setTimeout(() => {
+      fetchMarketplaceSkills();
+      setApiSaved(false);
+    }, 1000);
+  };
+
+  const handleTestApi = async () => {
+    // In dev mode, use relative URL to go through Vite proxy (avoids CORS)
+    const defaultUrl = import.meta.env.DEV ? '/api/v1/skills/search' : 'https://skills.lc/api/v1/skills/search';
+    const testUrl = localApiUrl || import.meta.env.VITE_SKILLS_API_URL || defaultUrl;
+    const testKey = localApiKey || import.meta.env.VITE_SKILLS_API_KEY || '';
+    
+    console.log('========== [API Test] ==========');
+    console.log('Testing URL:', testUrl);
+    console.log('Testing Key:', testKey ? `${testKey.substring(0, 15)}...` : 'NOT SET');
+    console.log('Dev Mode:', import.meta.env.DEV);
+    
+    try {
+      let fullUrl: string;
+      if (testUrl.startsWith('http')) {
+        const url = new URL(testUrl);
+        url.searchParams.set('limit', '5');
+        fullUrl = url.toString();
+      } else {
+        // Relative URL
+        fullUrl = `${testUrl}?limit=5`;
+      }
+      
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (testKey) {
+        headers['Authorization'] = `Bearer ${testKey}`;
+      }
+      
+      console.log('Full URL:', fullUrl);
+      const response = await fetch(fullUrl, { headers });
+      const data = await response.json();
+      
+      console.log('Response Status:', response.status);
+      console.log('Response Data:', data);
+      console.log('Skills Count:', data.data?.skills?.length || 0);
+      console.log('========== [End API Test] ==========');
+      
+      alert(i18n.language === 'zh' 
+        ? `测试成功! 状态: ${response.status}, Skills: ${data.data?.skills?.length || 0}` 
+        : `Test Success! Status: ${response.status}, Skills: ${data.data?.skills?.length || 0}`);
+    } catch (error) {
+      console.error('API Test Error:', error);
+      alert(i18n.language === 'zh' ? `测试失败: ${error}` : `Test Failed: ${error}`);
+    }
   };
 
   // Filter agents by compatibility
@@ -330,6 +416,150 @@ const Settings = () => {
                 <RefreshCw size={14} />
                 {i18n.language === 'zh' ? '刷新' : 'Refresh'}
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* API Configuration */}
+        <div className="collapse collapse-arrow bg-base-200/50 rounded-2xl border border-base-300">
+          <input
+            type="checkbox"
+            checked={expandedSections.api}
+            onChange={() => toggleSection('api')}
+          />
+          <div className="collapse-title pr-12">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-info/10 rounded-lg">
+                <Server size={16} className="text-info" />
+              </div>
+              <div className="flex-1">
+                <span className="font-semibold">
+                  {i18n.language === 'zh' ? 'API 配置' : 'API Configuration'}
+                </span>
+              </div>
+              {(apiUrl || apiKey) && (
+                <span className="stat-badge bg-success/20 text-success text-xs">
+                  {i18n.language === 'zh' ? '已配置' : 'Configured'}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="collapse-content">
+            <div className="pt-2 space-y-4">
+              {/* API URL */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Globe size={14} className="text-base-content/50" />
+                  {i18n.language === 'zh' ? 'API 地址' : 'API URL'}
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://skills.lc/api/v1/skills/search"
+                  className="input input-sm bg-base-100 border-base-300 w-full rounded-lg text-sm font-mono"
+                  value={localApiUrl}
+                  onChange={(e) => setLocalApiUrl(e.target.value)}
+                />
+                <p className="text-xs text-base-content/50">
+                  {i18n.language === 'zh' 
+                    ? '配置 Skills 市场的 API 端点地址' 
+                    : 'Configure the API endpoint URL for Skills Marketplace'}
+                </p>
+              </div>
+
+              {/* API Key */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Key size={14} className="text-base-content/50" />
+                  {i18n.language === 'zh' ? 'API 密钥' : 'API Key'}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    placeholder="sk_live_xxxxxx..."
+                    className="input input-sm bg-base-100 border-base-300 w-full rounded-lg text-sm font-mono pr-10"
+                    value={localApiKey}
+                    onChange={(e) => setLocalApiKey(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                  >
+                    {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+                <p className="text-xs text-base-content/50">
+                  {i18n.language === 'zh' 
+                    ? '用于 API 认证的 Bearer Token' 
+                    : 'Bearer token for API authentication'}
+                </p>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  className={`btn btn-sm gap-2 ${
+                    apiSaved ? 'btn-success' : 'btn-primary'
+                  }`}
+                  onClick={handleSaveApiSettings}
+                  disabled={apiSaved}
+                >
+                  {apiSaved ? (
+                    <>
+                      <Check size={14} />
+                      {i18n.language === 'zh' ? '已保存' : 'Saved'}
+                    </>
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      {i18n.language === 'zh' ? '保存配置' : 'Save Settings'}
+                    </>
+                  )}
+                </button>
+                <button
+                  className="btn btn-sm btn-info btn-outline gap-2"
+                  onClick={handleTestApi}
+                >
+                  <Play size={14} />
+                  {i18n.language === 'zh' ? '测试连接' : 'Test'}
+                </button>
+                <button
+                  className="btn btn-sm btn-ghost gap-2 text-base-content/60 hover:text-error"
+                  onClick={handleResetApiSettings}
+                  disabled={apiSaved || (!localApiUrl && !localApiKey)}
+                >
+                  <RotateCcw size={14} />
+                  {i18n.language === 'zh' ? '重置' : 'Reset'}
+                </button>
+                {(localApiUrl !== apiUrl || localApiKey !== apiKey) && (
+                  <span className="text-xs text-warning flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    {i18n.language === 'zh' ? '有未保存的更改' : 'Unsaved changes'}
+                  </span>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="bg-base-100 rounded-xl p-3 text-xs text-base-content/60 space-y-2">
+                <p>
+                  {i18n.language === 'zh' 
+                    ? '提示：如果未配置，将使用环境变量或默认值' 
+                    : 'Tip: If not configured, environment variables or defaults will be used'}
+                </p>
+                <div className="bg-warning/10 text-warning p-2 rounded-lg">
+                  <p className="font-medium mb-1">
+                    {i18n.language === 'zh' ? '浏览器开发模式注意事项:' : 'Browser Dev Mode Notice:'}
+                  </p>
+                  <p>
+                    {i18n.language === 'zh' 
+                      ? '在浏览器中运行 (npm run dev) 时，请使用相对路径 /api/v1/skills/search 以避免 CORS 错误。打包后的客户端无此限制。' 
+                      : 'When running in browser (npm run dev), use relative path /api/v1/skills/search to avoid CORS. Packaged app has no such limitation.'}
+                  </p>
+                </div>
+                <p className="font-mono text-[10px] text-base-content/40">
+                  Default: https://skills.lc/api/v1/skills/search
+                </p>
+              </div>
             </div>
           </div>
         </div>

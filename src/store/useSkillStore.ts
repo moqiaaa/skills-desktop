@@ -43,6 +43,9 @@ interface InstallResult {
 interface SkillStore {
   installedSkills: InstalledSkill[];
   marketplaceSkills: MarketplaceSkill[];
+  marketplaceTotal: number;  // Total skills count from API
+  marketplacePage: number;   // Current page
+  marketplaceQuery: string;  // Current search query
   isLoading: boolean;
   projectPaths: string[];
   defaultInstallLocation: 'system' | 'project';
@@ -67,8 +70,12 @@ interface SkillStore {
   // 平台信息
   platform: { os: string; arch: string; family: string } | null;
 
+  // API Configuration
+  apiUrl: string;
+  apiKey: string;
+
   // Actions
-  fetchMarketplaceSkills: () => Promise<void>;
+  fetchMarketplaceSkills: (query?: string, page?: number) => Promise<void>;
   scanLocalSkills: () => Promise<void>;
   installSkill: (skill: MarketplaceSkill) => Promise<InstallResult>;
   uninstallSkill: (id: string) => void;
@@ -81,6 +88,8 @@ interface SkillStore {
   setSelectedProjectIndex: (index: number) => void;
   scanSkillSecurity: (skillPath: string, skillId: string) => Promise<SecurityReport>;
   clearLastSecurityReport: () => void;
+  setApiUrl: (url: string) => void;
+  setApiKey: (key: string) => void;
 
   // 更新相关 Actions
   checkSkillUpdates: () => Promise<void>;
@@ -109,6 +118,9 @@ export const useSkillStore = create<SkillStore>()(
     (set, get) => ({
       installedSkills: [],
       marketplaceSkills: [],
+      marketplaceTotal: 0,
+      marketplacePage: 1,
+      marketplaceQuery: '',
       isLoading: false,
       projectPaths: [],
       defaultInstallLocation: 'system',
@@ -130,6 +142,18 @@ export const useSkillStore = create<SkillStore>()(
 
       // 平台信息
       platform: null,
+
+      // API Configuration (user settings override env vars)
+      apiUrl: '',
+      apiKey: '',
+
+      setApiUrl: (url: string) => {
+        set({ apiUrl: url });
+      },
+
+      setApiKey: (key: string) => {
+        set({ apiKey: key });
+      },
 
       setDefaultInstallLocation: (location: 'system' | 'project') => {
         set({ defaultInstallLocation: location });
@@ -213,16 +237,114 @@ export const useSkillStore = create<SkillStore>()(
         }
       },
 
-      fetchMarketplaceSkills: async () => {
-        set({ isLoading: true });
+      fetchMarketplaceSkills: async (query?: string, page: number = 1) => {
+        console.log('[fetchMarketplaceSkills] Function called!', { query, page });
+        set({ isLoading: true, marketplaceQuery: query || '', marketplacePage: page });
         try {
-          const response = await fetch('/data/marketplace.json');
-          if (!response.ok) throw new Error('Failed to load marketplace data');
-          const data = await response.json();
-          set({ marketplaceSkills: data, isLoading: false });
+          // Priority: User settings > Environment variables > Default
+          // In dev mode, use relative URL to go through Vite proxy (avoids CORS)
+          const state = get();
+          const defaultUrl = import.meta.env.DEV ? '/api/v1/skills/search' : 'https://skills.lc/api/v1/skills/search';
+          const apiUrl = state.apiUrl || import.meta.env.VITE_SKILLS_API_URL || defaultUrl;
+          const apiKey = state.apiKey || import.meta.env.VITE_SKILLS_API_KEY || '';
+          
+          console.log('========== [Marketplace API Debug] ==========');
+          console.log('[Config] API URL:', apiUrl);
+          console.log('[Config] API Key:', apiKey ? `${apiKey.substring(0, 15)}...` : 'NOT SET');
+          console.log('[Config] Query:', query || '(none)');
+          console.log('[Config] Page:', page);
+          
+          // Build URL with query parameters (handle both absolute and relative URLs)
+          const params = new URLSearchParams();
+          params.set('limit', '20');  // Use pagination limit
+          params.set('page', String(page));
+          params.set('sortBy', 'stars');
+          if (query && query.trim()) {
+            params.set('q', query.trim());
+          }
+          
+          let fullUrl: string;
+          if (apiUrl.startsWith('http')) {
+            const url = new URL(apiUrl);
+            params.forEach((value, key) => url.searchParams.set(key, value));
+            fullUrl = url.toString();
+          } else {
+            // Relative URL - append query params manually
+            const separator = apiUrl.includes('?') ? '&' : '?';
+            fullUrl = `${apiUrl}${separator}${params.toString()}`;
+          }
+          
+          const headers: HeadersInit = {
+            'Content-Type': 'application/json',
+          };
+          
+          // Add Authorization header if API key is configured
+          if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+          }
+          
+          console.log('[Request] URL:', fullUrl);
+          console.log('[Request] Headers:', JSON.stringify(headers, null, 2));
+          
+          const startTime = Date.now();
+          const response = await fetch(fullUrl, { headers });
+          const endTime = Date.now();
+          
+          console.log('[Response] Status:', response.status, response.statusText);
+          console.log('[Response] Time:', endTime - startTime, 'ms');
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('[Response] Error Body:', errorText);
+            throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+          }
+          
+          const result = await response.json();
+          
+          console.log('[Response] Success:', result.success);
+          console.log('[Response] Skills Count:', result.data?.skills?.length || 0);
+          console.log('[Response] Pagination:', JSON.stringify(result.data?.pagination));
+          
+          if (result.success && result.data?.skills) {
+            // Map API response to MarketplaceSkill format
+            const skills: MarketplaceSkill[] = result.data.skills.map((skill: any) => ({
+              id: skill.id || skill.skillId,
+              name: skill.name,
+              author: skill.author || 'Unknown',
+              authorAvatar: skill.author 
+                ? `https://github.com/${skill.source?.split('/')[0] || skill.author}.png`
+                : '',
+              description: skill.description || '',
+              descriptionZh: skill.descriptionZh,
+              descriptionEn: skill.descriptionEn || skill.description,
+              githubUrl: skill.githubUrl,
+              stars: skill.stars || 0,
+              forks: skill.forks || 0,
+              updatedAt: skill.updatedAt ? new Date(skill.updatedAt).getTime() : Date.now(),
+              hasMarketplace: true,
+              path: skill.source || '',
+              branch: skill.branch || 'main',
+            }));
+            // Get total from pagination
+            const total = result.data.pagination?.total || skills.length;
+            const currentPage = result.data.pagination?.page || page;
+            console.log('[Success] Loaded', skills.length, 'skills from API');
+            console.log('[Success] Total skills in marketplace:', total);
+            console.log('========== [End Marketplace API Debug] ==========');
+            set({ 
+              marketplaceSkills: skills, 
+              marketplaceTotal: total, 
+              marketplacePage: currentPage,
+              isLoading: false 
+            });
+          } else {
+            throw new Error('Invalid API response format');
+          }
         } catch (error) {
-          console.error('Error loading marketplace:', error);
-          set({ isLoading: false });
+          console.error('========== [Marketplace API Error] ==========');
+          console.error('[Error]', error);
+          set({ marketplaceSkills: [], marketplaceTotal: 0, isLoading: false });
+          console.log('========== [End Marketplace API Error] ==========');
         }
       },
 
@@ -664,7 +786,9 @@ export const useSkillStore = create<SkillStore>()(
         projectPaths: state.projectPaths,
         defaultInstallLocation: state.defaultInstallLocation,
         selectedProjectIndex: state.selectedProjectIndex,
-        customSymlinks: state.customSymlinks
+        customSymlinks: state.customSymlinks,
+        apiUrl: state.apiUrl,
+        apiKey: state.apiKey
       }),
     }
   )

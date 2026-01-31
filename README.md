@@ -1,16 +1,14 @@
 # Skills Desktop
 
-[中文](./docs/README_CN.md)
-
 A desktop application for managing Claude Code Skills, supporting browsing, installation, import, and security scanning for system-level and project-level Skills.
 
 ## Quick Start
 
-Download the latest version directly from [Releases](https://github.com/buzhangsan/skills-manager-client/releases).
+Download the latest version directly from [Releases](https://github.com/Harries/skills-desktop/releases).
 
-For a smarter way to find skills, use this CLI tool: https://github.com/Harries/skills-desktop
+For a smarter way to find skills, use this CLI tool: https://github.com/Harries/skills-cli
 
-If you have any issues, please report them in [Issues](https://github.com/buzhangsan/skills-manager-client/issues).
+If you have any issues, please report them in [Issues](https://github.com/Harries/skills-desktop/issues).
 
 ## Features
 
@@ -19,14 +17,14 @@ If you have any issues, please report them in [Issues](https://github.com/buzhan
 - View detailed Skill information
 - One-click uninstall unwanted Skills
 
-![My Skills](docs/images/mySkill.png)
+![My Skills](docs/images/myskills.png)
 
 ### 2. **Skill Marketplace**
 - Browse 67689+ open-source Skills
 - Search and filter functionality
 - One-click installation to local
 
-![Skill Marketplace](docs/images/marketplace.png)
+![Skill Marketplace](docs/images/maketplace.png)
 
 ### 3. **Skill Import**
 Supports two import methods:
@@ -39,6 +37,7 @@ Supports two import methods:
 - Security scoring and recommendations
 
 ### 5. **Project Path Configuration**
+![Skill Setting](docs/images/setting.png)
 - Customize multiple project paths
 - Automatically scan `.claude/skills` folders under projects
 - Cross-platform support (Windows, macOS)
@@ -112,17 +111,18 @@ Your skill content here...
 
 ## Downloads
 
-| Platform | File |
-|----------|------|
-| macOS (Apple Silicon) | `Skill.Manager_x.x.x_arm64.dmg` |
-| macOS (Intel) | `Skill.Manager_x.x.x_x64.dmg` |
-| Windows (Installer) | `Skill.Manager_x.x.x_x64-setup.exe` |
-| Windows (MSI) | `Skill.Manager_x.x.x_x64_en-US.msi` |
+| Platform | File                                |
+|----------|-------------------------------------|
+| macOS (Apple Silicon) | `Skill.Desktop_x.x.x_arm64.dmg`     |
+| macOS (Intel) | `Skill.Desktop_x.x.x_x64.dmg`       |
+| Windows (Installer) | `Skill.Desktop_x.x.x_x64-setup.exe` |
+| Windows (MSI) | `Skill.Desktop_x.x.x_x64_en-US.msi` |
 
 ## Contributing
 
 Issues and Pull Requests are welcome!
-
+Add function base on the project: https://github.com/buzhangsan/skills-manager-client
+  
 ## License
 
 MIT License

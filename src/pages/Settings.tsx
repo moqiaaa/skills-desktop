@@ -59,8 +59,8 @@ const Settings = () => {
   // Collapse states
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     native: false,
-    symlink: true,
-    api: true,
+    symlink: false,
+    api: false,
     install: false,
     paths: false,
     appearance: false,
@@ -174,15 +174,20 @@ const Settings = () => {
   };
 
   const handleTestApi = async () => {
-    // In dev mode, use relative URL to go through Vite proxy (avoids CORS)
-    const defaultUrl = import.meta.env.DEV ? '/api/v1/skills/search' : 'https://skills.lc/api/v1/skills/search';
-    const testUrl = localApiUrl || import.meta.env.VITE_SKILLS_API_URL || defaultUrl;
-    const testKey = localApiKey || import.meta.env.VITE_SKILLS_API_KEY || '';
+    // Only test if API URL is configured
+    if (!localApiUrl) {
+      alert(i18n.language === 'zh' 
+        ? '请先配置 API 地址' 
+        : 'Please configure API URL first');
+      return;
+    }
+    
+    const testUrl = localApiUrl;
+    const testKey = localApiKey;
     
     console.log('========== [API Test] ==========');
     console.log('Testing URL:', testUrl);
     console.log('Testing Key:', testKey ? `${testKey.substring(0, 15)}...` : 'NOT SET');
-    console.log('Dev Mode:', import.meta.env.DEV);
     
     try {
       let fullUrl: string;
@@ -191,7 +196,6 @@ const Settings = () => {
         url.searchParams.set('limit', '5');
         fullUrl = url.toString();
       } else {
-        // Relative URL
         fullUrl = `${testUrl}?limit=5`;
       }
       
@@ -543,21 +547,11 @@ const Settings = () => {
               <div className="bg-base-100 rounded-xl p-3 text-xs text-base-content/60 space-y-2">
                 <p>
                   {i18n.language === 'zh' 
-                    ? '提示：如果未配置，将使用环境变量或默认值' 
-                    : 'Tip: If not configured, environment variables or defaults will be used'}
+                    ? '默认使用本地数据，配置 API 后才会从接口获取数据' 
+                    : 'Uses local data by default. Configure API to fetch from remote.'}
                 </p>
-                <div className="bg-warning/10 text-warning p-2 rounded-lg">
-                  <p className="font-medium mb-1">
-                    {i18n.language === 'zh' ? '浏览器开发模式注意事项:' : 'Browser Dev Mode Notice:'}
-                  </p>
-                  <p>
-                    {i18n.language === 'zh' 
-                      ? '在浏览器中运行 (npm run dev) 时，请使用相对路径 /api/v1/skills/search 以避免 CORS 错误。打包后的客户端无此限制。' 
-                      : 'When running in browser (npm run dev), use relative path /api/v1/skills/search to avoid CORS. Packaged app has no such limitation.'}
-                  </p>
-                </div>
                 <p className="font-mono text-[10px] text-base-content/40">
-                  Default: https://skills.lc/api/v1/skills/search
+                  API: https://skills.lc/api/v1/skills/search
                 </p>
               </div>
             </div>
@@ -821,7 +815,7 @@ const Settings = () => {
                 onClick={async (e) => {
                   e.preventDefault();
                   try {
-                    await invoke('open_url', { url: 'https://github.com/buzhangsan/skills-manager-client' });
+                    await invoke('open_url', { url: 'https://github.com/Harries/skills-desktop' });
                   } catch (error) {
                     console.error('Failed to open URL:', error);
                   }
@@ -838,7 +832,7 @@ const Settings = () => {
                 onClick={async (e) => {
                   e.preventDefault();
                   try {
-                    await invoke('open_url', { url: 'https://github.com/buzhangsan/skills-manager-client/issues' });
+                    await invoke('open_url', { url: 'https://github.com/Harries/skills-desktop/issues' });
                   } catch (error) {
                     console.error('Failed to open URL:', error);
                   }
@@ -858,14 +852,14 @@ const Settings = () => {
             </h3>
 
             <div className="space-y-3">
-              {/* skill-manager (Python CLI) */}
+              {/* skills-desktop */}
               <a
                 href="#"
                 className="block p-3 bg-base-100 rounded-xl hover:bg-base-200 transition-colors group"
                 onClick={async (e) => {
                   e.preventDefault();
                   try {
-                    await invoke('open_url', { url: 'https://github.com/buzhangsan/skill-manager' });
+                    await invoke('open_url', { url: 'https://github.com/Harries/skills-desktop' });
                   } catch (error) {
                     console.error('Failed to open URL:', error);
                   }
@@ -877,7 +871,7 @@ const Settings = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm flex items-center gap-1">
-                      skill-manager
+                      skills-desktop
                       <ExternalLink size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <p className="text-xs text-base-content/50 mt-0.5">
@@ -898,7 +892,7 @@ const Settings = () => {
                 onClick={async (e) => {
                   e.preventDefault();
                   try {
-                    await invoke('open_url', { url: 'https://github.com/buzhangsan/skills-manager-client/issues/1' });
+                    await invoke('open_url', { url: 'https://github.com/Harries/skills-desktop/discussions' });
                   } catch (error) {
                     console.error('Failed to open URL:', error);
                   }

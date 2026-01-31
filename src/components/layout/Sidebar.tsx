@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Library, ShoppingBag, ShieldCheck, Settings, Box } from 'lucide-react';
+import { LayoutDashboard, Boxes, ShoppingBag, ShieldCheck, Settings, Box } from 'lucide-react';
 import clsx from 'clsx';
 
 const Sidebar = () => {
   const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/my-skills', icon: Library, label: 'My Skills' },
+    { to: '/my-skills', icon: Boxes, label: 'My Skills' },
     { to: '/marketplace', icon: ShoppingBag, label: 'Marketplace' },
     { to: '/security', icon: ShieldCheck, label: 'Security' },
     { to: '/settings', icon: Settings, label: 'Settings' },
@@ -18,7 +18,7 @@ const Sidebar = () => {
           <Box size={24} />
         </div>
         <div>
-          <h1 className="font-bold text-lg">Skill Manager</h1>
+          <h1 className="font-bold text-lg">Skills Desktop</h1>
           <p className="text-xs text-base-content/60">v1.0.0</p>
         </div>
       </div>

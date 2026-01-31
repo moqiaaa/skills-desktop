@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Sun, Moon, Library, ShoppingBag, Settings } from 'lucide-react';
+import { Sun, Moon, Boxes, ShoppingBag, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -30,7 +30,7 @@ function Navbar() {
     }, [theme]);
 
     const navItems = [
-        { path: '/my-skills', label: t('mySkills'), icon: Library },
+        { path: '/my-skills', label: t('mySkills'), icon: Boxes },
         { path: '/marketplace', label: t('marketplace'), icon: ShoppingBag },
         { path: '/settings', label: t('settings'), icon: Settings },
     ];
@@ -62,7 +62,7 @@ function Navbar() {
                             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white">
                                 S
                             </div>
-                            <span>Skill Manager</span>
+                            <span>Skills Desktop</span>
                         </Link>
                     </div>
 

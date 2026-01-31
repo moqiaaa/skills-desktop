@@ -249,8 +249,13 @@ const Marketplace = () => {
     }
   };
 
-  const isInstalled = (skillId: string) => {
-    return installedSkills.some(s => s.id === skillId);
+  const isInstalled = (skill: any) => {
+    // Check by ID, name, or GitHub URL since installed skills use path as ID
+    return installedSkills.some(s => 
+      s.id === skill.id || 
+      s.name === skill.name ||
+      (skill.githubUrl && s.sourceUrl && s.sourceUrl.includes(skill.githubUrl.replace('https://github.com/', '').replace('.git', '')))
+    );
   };
 
   // Use skills directly from API (already filtered and paginated)
@@ -436,7 +441,7 @@ const Marketplace = () => {
               className="btn btn-xs btn-ghost rounded-lg hover:bg-white/10"
               onClick={() => {
                 const uninstalledIds = currentSkills
-                  .filter(s => !isInstalled(s.id))
+                  .filter(s => !isInstalled(s))
                   .map(s => s.id);
                 selectAllBatch(uninstalledIds);
               }}
@@ -489,7 +494,7 @@ const Marketplace = () => {
           {/* Skills Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {currentSkills.map((skill, index) => {
-              const installed = isInstalled(skill.id);
+              const installed = isInstalled(skill);
               const isCurrentlyInstalling = installingSkillId === skill.id;
               const isSelected = batchSelectedSkills.includes(skill.id);
               return (

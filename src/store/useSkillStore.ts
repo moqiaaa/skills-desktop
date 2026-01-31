@@ -240,23 +240,63 @@ export const useSkillStore = create<SkillStore>()(
       fetchMarketplaceSkills: async (query?: string, page: number = 1) => {
         console.log('[fetchMarketplaceSkills] Function called!', { query, page });
         set({ isLoading: true, marketplaceQuery: query || '', marketplacePage: page });
+        
+        const state = get();
+        const apiUrl = state.apiUrl;  // Only use user-configured API URL
+        const apiKey = state.apiKey;  // Only use user-configured API Key
+        
+        // If API is not configured in Settings, use local data
+        if (!apiUrl) {
+          console.log('[fetchMarketplaceSkills] No API configured, using local data');
+          try {
+            const response = await fetch('/data/marketplace.json');
+            if (response.ok) {
+              const localData = await response.json();
+              
+              // Apply local filtering if query is provided
+              let filteredData = localData;
+              if (query && query.trim()) {
+                const q = query.toLowerCase();
+                filteredData = localData.filter((skill: any) =>
+                  skill.name?.toLowerCase().includes(q) ||
+                  skill.description?.toLowerCase().includes(q) ||
+                  skill.author?.toLowerCase().includes(q)
+                );
+              }
+              
+              // Apply local pagination
+              const pageSize = 20;
+              const total = filteredData.length;
+              const startIndex = (page - 1) * pageSize;
+              const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
+              
+              console.log('[Local] Loaded', paginatedData.length, 'skills, total:', total);
+              set({ 
+                marketplaceSkills: paginatedData, 
+                marketplaceTotal: total,
+                marketplacePage: page,
+                isLoading: false 
+              });
+              return;
+            }
+          } catch (error) {
+            console.error('[Local] Failed to load local data:', error);
+          }
+          set({ marketplaceSkills: [], marketplaceTotal: 0, isLoading: false });
+          return;
+        }
+        
+        // API is configured, fetch from remote
         try {
-          // Priority: User settings > Environment variables > Default
-          // In dev mode, use relative URL to go through Vite proxy (avoids CORS)
-          const state = get();
-          const defaultUrl = import.meta.env.DEV ? '/api/v1/skills/search' : 'https://skills.lc/api/v1/skills/search';
-          const apiUrl = state.apiUrl || import.meta.env.VITE_SKILLS_API_URL || defaultUrl;
-          const apiKey = state.apiKey || import.meta.env.VITE_SKILLS_API_KEY || '';
-          
           console.log('========== [Marketplace API Debug] ==========');
           console.log('[Config] API URL:', apiUrl);
           console.log('[Config] API Key:', apiKey ? `${apiKey.substring(0, 15)}...` : 'NOT SET');
           console.log('[Config] Query:', query || '(none)');
           console.log('[Config] Page:', page);
           
-          // Build URL with query parameters (handle both absolute and relative URLs)
+          // Build URL with query parameters
           const params = new URLSearchParams();
-          params.set('limit', '20');  // Use pagination limit
+          params.set('limit', '20');
           params.set('page', String(page));
           params.set('sortBy', 'stars');
           if (query && query.trim()) {
@@ -269,7 +309,6 @@ export const useSkillStore = create<SkillStore>()(
             params.forEach((value, key) => url.searchParams.set(key, value));
             fullUrl = url.toString();
           } else {
-            // Relative URL - append query params manually
             const separator = apiUrl.includes('?') ? '&' : '?';
             fullUrl = `${apiUrl}${separator}${params.toString()}`;
           }
@@ -278,13 +317,11 @@ export const useSkillStore = create<SkillStore>()(
             'Content-Type': 'application/json',
           };
           
-          // Add Authorization header if API key is configured
           if (apiKey) {
             headers['Authorization'] = `Bearer ${apiKey}`;
           }
           
           console.log('[Request] URL:', fullUrl);
-          console.log('[Request] Headers:', JSON.stringify(headers, null, 2));
           
           const startTime = Date.now();
           const response = await fetch(fullUrl, { headers });
@@ -303,10 +340,8 @@ export const useSkillStore = create<SkillStore>()(
           
           console.log('[Response] Success:', result.success);
           console.log('[Response] Skills Count:', result.data?.skills?.length || 0);
-          console.log('[Response] Pagination:', JSON.stringify(result.data?.pagination));
           
           if (result.success && result.data?.skills) {
-            // Map API response to MarketplaceSkill format
             const skills: MarketplaceSkill[] = result.data.skills.map((skill: any) => ({
               id: skill.id || skill.skillId,
               name: skill.name,
@@ -325,11 +360,9 @@ export const useSkillStore = create<SkillStore>()(
               path: skill.source || '',
               branch: skill.branch || 'main',
             }));
-            // Get total from pagination
             const total = result.data.pagination?.total || skills.length;
             const currentPage = result.data.pagination?.page || page;
-            console.log('[Success] Loaded', skills.length, 'skills from API');
-            console.log('[Success] Total skills in marketplace:', total);
+            console.log('[Success] Loaded', skills.length, 'skills from API, total:', total);
             console.log('========== [End Marketplace API Debug] ==========');
             set({ 
               marketplaceSkills: skills, 
@@ -343,8 +376,8 @@ export const useSkillStore = create<SkillStore>()(
         } catch (error) {
           console.error('========== [Marketplace API Error] ==========');
           console.error('[Error]', error);
-          set({ marketplaceSkills: [], marketplaceTotal: 0, isLoading: false });
           console.log('========== [End Marketplace API Error] ==========');
+          set({ marketplaceSkills: [], marketplaceTotal: 0, isLoading: false });
         }
       },
 
@@ -781,7 +814,7 @@ export const useSkillStore = create<SkillStore>()(
       }
     }),
     {
-      name: 'skill-manager-storage',
+      name: 'skills-desktop-storage',
       partialize: (state) => ({
         projectPaths: state.projectPaths,
         defaultInstallLocation: state.defaultInstallLocation,

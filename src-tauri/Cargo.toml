@@ -1,7 +1,7 @@
 [package]
-name = "skill-manager"
+name = "skills-desktop"
 version = "1.3.0"
-description = "Skill Manager Desktop App"
+description = "Skills Desktop App"
 authors = ["you"]
 license = ""
 repository = ""

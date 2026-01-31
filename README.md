@@ -1,16 +1,14 @@
-# Skill Manager
+# Skills Desktop
 
 [中文](./docs/README_CN.md)
 
 A desktop application for managing Claude Code Skills, supporting browsing, installation, import, and security scanning for system-level and project-level Skills.
 
-![Screenshot](./src/assets/d5a32d32fda7567c59c55cecd707a5a4.jpg)
-
 ## Quick Start
 
 Download the latest version directly from [Releases](https://github.com/buzhangsan/skills-manager-client/releases).
 
-For a smarter way to find skills, use this CLI tool: https://github.com/buzhangsan/skill-manager
+For a smarter way to find skills, use this CLI tool: https://github.com/Harries/skills-desktop
 
 If you have any issues, please report them in [Issues](https://github.com/buzhangsan/skills-manager-client/issues).
 

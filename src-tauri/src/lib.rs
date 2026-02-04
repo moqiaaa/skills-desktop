@@ -1138,6 +1138,40 @@ fn get_platform_info() -> Result<serde_json::Value, String> {
     }))
 }
 
+// HTTP API 请求 (绕过 CORS)
+#[derive(Debug, Deserialize)]
+pub struct FetchApiRequest {
+    pub url: String,
+    #[serde(rename = "apiKey")]
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FetchApiResponse {
+    pub status: u16,
+    pub body: String,
+}
+
+#[tauri::command(async)]
+async fn fetch_api(request: FetchApiRequest) -> Result<FetchApiResponse, String> {
+    let client = reqwest::Client::new();
+    
+    let mut req = client.get(&request.url)
+        .header("Content-Type", "application/json");
+    
+    if let Some(key) = &request.api_key {
+        if !key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+    }
+    
+    let response = req.send().await.map_err(|e| format!("Request failed: {}", e))?;
+    let status = response.status().as_u16();
+    let body = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
+    
+    Ok(FetchApiResponse { status, body })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1159,7 +1193,8 @@ pub fn run() {
             create_symlink,
             create_all_symlinks,
             remove_symlink,
-            get_platform_info
+            get_platform_info,
+            fetch_api
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

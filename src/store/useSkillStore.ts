@@ -286,7 +286,7 @@ export const useSkillStore = create<SkillStore>()(
           return;
         }
         
-        // API is configured, fetch from remote
+        // API is configured, fetch from remote using Tauri command (bypasses CORS)
         try {
           console.log('========== [Marketplace API Debug] ==========');
           console.log('[Config] API URL:', apiUrl);
@@ -313,53 +313,123 @@ export const useSkillStore = create<SkillStore>()(
             fullUrl = `${apiUrl}${separator}${params.toString()}`;
           }
           
-          const headers: HeadersInit = {
-            'Content-Type': 'application/json',
-          };
-          
-          if (apiKey) {
-            headers['Authorization'] = `Bearer ${apiKey}`;
-          }
-          
           console.log('[Request] URL:', fullUrl);
+          console.log('[Request] Using Tauri fetch_api command (bypasses CORS)');
           
           const startTime = Date.now();
-          const response = await fetch(fullUrl, { headers });
+          // Use Tauri command to bypass CORS
+          const response: { status: number; body: string } = await invoke('fetch_api', {
+            request: {
+              url: fullUrl,
+              apiKey: apiKey || null
+            }
+          });
           const endTime = Date.now();
           
-          console.log('[Response] Status:', response.status, response.statusText);
+          console.log('[Response] Status:', response.status);
           console.log('[Response] Time:', endTime - startTime, 'ms');
           
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[Response] Error Body:', errorText);
-            throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+          if (response.status !== 200) {
+            console.error('[Response] Error Body:', response.body);
+            throw new Error(`API request failed with status ${response.status}: ${response.body}`);
           }
           
-          const result = await response.json();
+          const result = JSON.parse(response.body);
           
           console.log('[Response] Success:', result.success);
           console.log('[Response] Skills Count:', result.data?.skills?.length || 0);
           
           if (result.success && result.data?.skills) {
-            const skills: MarketplaceSkill[] = result.data.skills.map((skill: any) => ({
-              id: skill.id || skill.skillId,
-              name: skill.name,
-              author: skill.author || 'Unknown',
-              authorAvatar: skill.author 
-                ? `https://github.com/${skill.source?.split('/')[0] || skill.author}.png`
-                : '',
-              description: skill.description || '',
-              descriptionZh: skill.descriptionZh,
-              descriptionEn: skill.descriptionEn || skill.description,
-              githubUrl: skill.githubUrl,
-              stars: skill.stars || 0,
-              forks: skill.forks || 0,
-              updatedAt: skill.updatedAt ? new Date(skill.updatedAt).getTime() : Date.now(),
-              hasMarketplace: true,
-              path: skill.source || '',
-              branch: skill.branch || 'main',
-            }));
+            console.log('[Debug] First skill ALL fields:', Object.keys(result.data.skills[0]));
+            console.log('[Debug] First skill raw data:', JSON.stringify(result.data.skills[0], null, 2));
+            
+            const skills: MarketplaceSkill[] = result.data.skills.map((skill: any) => {
+              // Construct githubUrl - need to extract path from skillId
+              let githubUrl = '';
+              const branch = skill.branch || 'main';
+              
+              if (skill.source) {
+                const sourceParts = skill.source.split('/');
+                if (sourceParts.length >= 2) {
+                  const owner = sourceParts[0];
+                  const repo = sourceParts[1];
+                  const baseUrl = `https://github.com/${owner}/${repo}`;
+                  
+                  // Try to extract path from skillId
+                  // skillId format: "owner-repo-path-parts-skill-md" 
+                  // e.g., "lobehub-lobehub-agents-skills-project-overview-skill-md"
+                  let skillPath = '';
+                  if (skill.skillId) {
+                    const skillIdLower = skill.skillId.toLowerCase();
+                    const ownerLower = owner.toLowerCase();
+                    const repoLower = repo.toLowerCase();
+                    
+                    // Remove "owner-repo-" prefix and "-skill-md" suffix
+                    let pathPart = skillIdLower;
+                    if (pathPart.startsWith(`${ownerLower}-${repoLower}-`)) {
+                      pathPart = pathPart.substring(`${ownerLower}-${repoLower}-`.length);
+                    }
+                    if (pathPart.endsWith('-skill-md')) {
+                      pathPart = pathPart.substring(0, pathPart.length - '-skill-md'.length);
+                    }
+                    
+                    // Convert dashes to slashes for the path
+                    // But be careful: skill names can have dashes too
+                    // The skill name is at the end, so we need to find where it starts
+                    const skillNameLower = skill.name.toLowerCase().replace(/-/g, '-');
+                    
+                    if (pathPart.endsWith(skillNameLower)) {
+                      // Everything before the skill name is the directory path
+                      const dirPath = pathPart.substring(0, pathPart.length - skillNameLower.length);
+                      if (dirPath.endsWith('-')) {
+                        skillPath = dirPath.substring(0, dirPath.length - 1).replace(/-/g, '/') + '/' + skill.name;
+                      } else {
+                        skillPath = skill.name;
+                      }
+                    } else {
+                      skillPath = pathPart.replace(/-/g, '/');
+                    }
+                  }
+                  
+                  if (skillPath) {
+                    githubUrl = `${baseUrl}/tree/${branch}/${skillPath}`;
+                  } else if (sourceParts.length > 2) {
+                    // Source contains the path
+                    const subPath = sourceParts.slice(2).join('/');
+                    githubUrl = `${baseUrl}/tree/${branch}/${subPath}`;
+                  } else {
+                    // Fallback to skill name
+                    githubUrl = `${baseUrl}/tree/${branch}/${skill.name}`;
+                  }
+                }
+              }
+              
+              // Override with explicit githubUrl if it contains /tree/ (full path)
+              if (skill.githubUrl && skill.githubUrl.includes('/tree/')) {
+                githubUrl = skill.githubUrl;
+              }
+              
+              console.log(`[Debug] Skill "${skill.name}" -> githubUrl:`, githubUrl);
+              
+              return {
+                id: skill.id || skill.skillId,
+                name: skill.name,
+                author: skill.author || 'Unknown',
+                authorAvatar: skill.author 
+                  ? `https://github.com/${skill.source?.split('/')[0] || skill.author}.png`
+                  : '',
+                description: skill.description || '',
+                descriptionZh: skill.descriptionZh,
+                descriptionEn: skill.descriptionEn || skill.description,
+                githubUrl: githubUrl || '',
+                stars: skill.stars || 0,
+                forks: skill.forks || 0,
+                updatedAt: skill.updatedAt ? new Date(skill.updatedAt).getTime() : Date.now(),
+                hasMarketplace: true,
+                path: skill.source || '',
+                branch: skill.branch || 'main',
+              };
+            });
             const total = result.data.pagination?.total || skills.length;
             const currentPage = result.data.pagination?.page || page;
             console.log('[Success] Loaded', skills.length, 'skills from API, total:', total);
@@ -427,6 +497,15 @@ export const useSkillStore = create<SkillStore>()(
 
       installSkill: async (skill: MarketplaceSkill) => {
         const { defaultInstallLocation, projectPaths, selectedProjectIndex } = get();
+
+        // Validate githubUrl
+        if (!skill.githubUrl || !skill.githubUrl.startsWith('https://github.com/')) {
+          console.error('[installSkill] Invalid githubUrl:', skill.githubUrl);
+          console.error('[installSkill] Full skill data:', JSON.stringify(skill, null, 2));
+          throw new Error(`Invalid GitHub URL: ${skill.githubUrl || 'empty'}. Cannot install skill.`);
+        }
+
+        console.log('[installSkill] Installing from:', skill.githubUrl);
 
         // 确定安装路径 (始终安装到 Claude Code 目录)
         let installPath = undefined;

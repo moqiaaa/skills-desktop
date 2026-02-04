@@ -92,8 +92,9 @@ if (hasSips) {
     console.error(`  ✗ ICO generation note: ${err.message}`);
   }
 
-  // Generate ICNS file (macOS)
-  console.log('\nGenerating icon.icns for macOS...');
+  // Generate ICNS file (macOS) with padding
+  // Custom: 70% content size with 15% padding each side for smaller appearance
+  console.log('\nGenerating icon.icns for macOS (70% content, 15% padding)...');
   try {
     const iconsetPath = path.join(iconsDir, 'icon.iconset');
     
@@ -103,6 +104,8 @@ if (hasSips) {
     }
     
     // Generate required sizes for iconset
+    // Apple HIG: 824/1024 = 80.5% content
+    const contentRatio = 824 / 1024;
     const icnsSizes = [
       { name: 'icon_16x16.png', size: 16 },
       { name: 'icon_16x16@2x.png', size: 32 },
@@ -118,8 +121,18 @@ if (hasSips) {
     
     for (const icon of icnsSizes) {
       const outputPath = path.join(iconsetPath, icon.name);
-      fs.copyFileSync(sourceImage, outputPath);
-      execSync(`sips -z ${icon.size} ${icon.size} "${outputPath}"`, { stdio: 'pipe' });
+      const contentSize = Math.round(icon.size * contentRatio); // 70% of target size
+      const padding = Math.round((icon.size - contentSize) / 2);
+      
+      // Use ImageMagick for transparent padding
+      try {
+        execSync(`convert "${sourceImage}" -resize ${contentSize}x${contentSize} -gravity center -background transparent -extent ${icon.size}x${icon.size} "${outputPath}"`, { stdio: 'pipe' });
+      } catch {
+        // Fallback to sips if ImageMagick not available
+        fs.copyFileSync(sourceImage, outputPath);
+        execSync(`sips -z ${contentSize} ${contentSize} "${outputPath}"`, { stdio: 'pipe' });
+        execSync(`sips -p ${icon.size} ${icon.size} "${outputPath}"`, { stdio: 'pipe' });
+      }
     }
     
     // Convert to icns

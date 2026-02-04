@@ -199,14 +199,17 @@ const Settings = () => {
         fullUrl = `${testUrl}?limit=5`;
       }
       
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (testKey) {
-        headers['Authorization'] = `Bearer ${testKey}`;
-      }
-      
       console.log('Full URL:', fullUrl);
-      const response = await fetch(fullUrl, { headers });
-      const data = await response.json();
+      console.log('Using Tauri fetch_api command (bypasses CORS)');
+      
+      // Use Tauri command to bypass CORS
+      const response: { status: number; body: string } = await invoke('fetch_api', {
+        request: {
+          url: fullUrl,
+          apiKey: testKey || null
+        }
+      });
+      const data = JSON.parse(response.body);
       
       console.log('Response Status:', response.status);
       console.log('Response Data:', data);
@@ -794,7 +797,7 @@ const Settings = () => {
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-base-content/60">{i18n.language === 'zh' ? '版本' : 'Version'}</span>
-                <span className="font-mono font-semibold">v1.2.3</span>
+                <span className="font-mono font-semibold">v1.3.1</span>
               </div>
 
               <div className="flex items-center justify-between">

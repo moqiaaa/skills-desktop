@@ -526,7 +526,13 @@ const Marketplace = () => {
                             onClick={(e) => e.stopPropagation()}
                           />
                         )}
-                        <img src={skill.authorAvatar} alt={skill.author} className="w-7 h-7 rounded-full ring-2 ring-base-200" />
+                        {skill.authorAvatar ? (
+                          <img src={skill.authorAvatar} alt={skill.author} className="w-7 h-7 rounded-full ring-2 ring-base-200" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full ring-2 ring-base-200 bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                            {skill.author?.charAt(0)?.toUpperCase() || '?'}
+                          </div>
+                        )}
                         <span className="text-sm text-base-content/60 font-medium">{skill.author}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-amber-500 text-sm font-semibold bg-amber-500/10 px-2 py-1 rounded-lg">

@@ -344,9 +344,21 @@ export const useSkillStore = create<SkillStore>()(
             console.log('[Debug] First skill raw data:', JSON.stringify(result.data.skills[0], null, 2));
             
             const skills: MarketplaceSkill[] = result.data.skills.map((skill: any) => {
-              // Construct githubUrl - need to extract path from skillId
+              // PRIORITY 1: Use API's githubUrl directly if it's a valid full path
               let githubUrl = '';
-              const branch = skill.branch || 'main';
+              
+              console.log(`[Debug] Skill "${skill.name}" raw data:`);
+              console.log(`  - skill.githubUrl from API: ${skill.githubUrl}`);
+              console.log(`  - skill.source: ${skill.source}`);
+              console.log(`  - skill.branch: ${skill.branch}`);
+              
+              // If API provides a valid githubUrl with full path, use it directly
+              if (skill.githubUrl && skill.githubUrl.includes('/tree/')) {
+                githubUrl = skill.githubUrl;
+                console.log(`  - Using API's githubUrl directly`);
+              } else {
+                // FALLBACK: Construct githubUrl from source/branch
+                const branch = skill.branch || 'main';
               
               if (skill.source) {
                 const sourceParts = skill.source.split('/');
@@ -413,6 +425,7 @@ export const useSkillStore = create<SkillStore>()(
               
               return {
                 id: skill.id || skill.skillId,
+                skillId: skill.skillId || skill.id,  // Preserve original skillId for API reporting
                 name: skill.name,
                 author: skill.author || 'Unknown',
                 authorAvatar: skill.author 
@@ -526,9 +539,49 @@ export const useSkillStore = create<SkillStore>()(
           }
         });
 
+        console.log('[installSkill] import_github_skill result:', result);
+
         if (!result.success) {
           throw new Error(result.message || 'Installation failed');
         }
+
+        // Report install to API (non-blocking, fire and forget)
+        const reportInstall = async () => {
+          try {
+            // Use the original skillId from API (e.g., "facebook-react-claude-skills-extract-errors-skill-md")
+            const skillId = skill.skillId;
+            
+            if (!skillId) {
+              console.log('[installSkill] No skillId available for reporting');
+              return;
+            }
+            
+            const requestBody = {
+              skillId: skillId,
+              source: 'desktop'
+            };
+            
+            console.log('[installSkill] Reporting install:');
+            console.log('[installSkill] - skillId:', skillId);
+            console.log('[installSkill] - request body:', JSON.stringify(requestBody));
+            
+            const response: any = await invoke('fetch_api', {
+              request: {
+                url: 'https://skills.lc/api/install',
+                apiKey: null,
+                method: 'POST',
+                body: JSON.stringify(requestBody)
+              }
+            });
+            console.log('[installSkill] Install report response:', response);
+          } catch (reportError) {
+            // Silently ignore - don't block installation
+            console.log('[installSkill] Install report failed (non-blocking):', reportError);
+          }
+        };
+        
+        // Fire and forget - don't await
+        reportInstall();
 
         // 重新扫描本地技能
         await get().scanLocalSkills();

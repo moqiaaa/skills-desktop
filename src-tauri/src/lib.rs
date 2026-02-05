@@ -556,6 +556,13 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
             let repo_base = format!("https://github.com/{}/{}", parts[3], parts[4]);
             let branch = parts.get(6).unwrap_or(&"main");
             let subpath = parts[7..].join("/");
+            
+            println!("[import_github_skill] Sparse checkout:");
+            println!("  repo_base: {}", repo_base);
+            println!("  branch: {}", branch);
+            println!("  subpath: {}", subpath);
+            println!("  skill_name: {}", skill_name);
+            println!("  target_dir: {:?}", target_dir);
 
             let temp_dir = install_dir.join(".temp_clone");
             let _ = fs::remove_dir_all(&temp_dir);
@@ -565,30 +572,51 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
                 .output();
 
             match output {
-                Err(e) => return ImportResult {
-                    success: false,
-                    message: format!("Git command failed: {}", e),
-                    blocked: false,
-                },
-                Ok(o) if !o.status.success() => return ImportResult {
-                    success: false,
-                    message: format!("Git clone failed: {}", String::from_utf8_lossy(&o.stderr)),
-                    blocked: false,
-                },
-                _ => {}
+                Err(e) => {
+                    println!("[import_github_skill] Git clone error: {}", e);
+                    return ImportResult {
+                        success: false,
+                        message: format!("Git command failed: {}", e),
+                        blocked: false,
+                    };
+                }
+                Ok(o) if !o.status.success() => {
+                    println!("[import_github_skill] Git clone failed: {}", String::from_utf8_lossy(&o.stderr));
+                    return ImportResult {
+                        success: false,
+                        message: format!("Git clone failed: {}", String::from_utf8_lossy(&o.stderr)),
+                        blocked: false,
+                    };
+                }
+                Ok(_) => {
+                    println!("[import_github_skill] Git clone succeeded");
+                }
             }
 
-            let _ = Command::new("git")
+            let sparse_output = Command::new("git")
                 .current_dir(&temp_dir)
                 .args(["sparse-checkout", "set", &subpath])
                 .output();
+            
+            match &sparse_output {
+                Err(e) => println!("[import_github_skill] Sparse-checkout error: {}", e),
+                Ok(o) if !o.status.success() => println!("[import_github_skill] Sparse-checkout failed: {}", String::from_utf8_lossy(&o.stderr)),
+                Ok(_) => println!("[import_github_skill] Sparse-checkout succeeded"),
+            }
 
-            let _ = Command::new("git")
+            let checkout_output = Command::new("git")
                 .current_dir(&temp_dir)
                 .args(["checkout", branch])
                 .output();
+                
+            match &checkout_output {
+                Err(e) => println!("[import_github_skill] Checkout error: {}", e),
+                Ok(o) if !o.status.success() => println!("[import_github_skill] Checkout failed: {}", String::from_utf8_lossy(&o.stderr)),
+                Ok(_) => println!("[import_github_skill] Checkout succeeded"),
+            }
 
             let source = temp_dir.join(&subpath);
+            println!("[import_github_skill] Source path: {:?}, exists: {}", source, source.exists());
             if source.exists() {
                 let _ = fs::remove_dir_all(&target_dir);
                 if let Err(e) = fs::rename(&source, &target_dir) {
@@ -613,9 +641,23 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
                     description_en: None,
                 };
                 let _ = save_skill_metadata(&target_dir, &metadata);
+            } else {
+                // Source directory doesn't exist - sparse checkout failed
+                let _ = fs::remove_dir_all(&temp_dir);
+                return ImportResult {
+                    success: false,
+                    message: format!("Skill path not found in repository: {}", subpath),
+                    blocked: false,
+                };
             }
 
             let _ = fs::remove_dir_all(&temp_dir);
+            
+            return ImportResult {
+                success: true,
+                message: format!("Successfully installed {} to {}", skill_name, target_dir.display()),
+                blocked: false,
+            };
         } else {
             let _ = fs::remove_dir_all(&target_dir);
 
@@ -1144,6 +1186,8 @@ pub struct FetchApiRequest {
     pub url: String,
     #[serde(rename = "apiKey")]
     pub api_key: Option<String>,
+    pub method: Option<String>,  // GET or POST, default GET
+    pub body: Option<String>,    // Request body for POST
 }
 
 #[derive(Debug, Serialize)]
@@ -1154,19 +1198,47 @@ pub struct FetchApiResponse {
 
 #[tauri::command(async)]
 async fn fetch_api(request: FetchApiRequest) -> Result<FetchApiResponse, String> {
-    let client = reqwest::Client::new();
+    println!("[fetch_api] Requesting URL: {} (method: {})", &request.url, request.method.as_deref().unwrap_or("GET"));
     
-    let mut req = client.get(&request.url)
-        .header("Content-Type", "application/json");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    
+    let method = request.method.as_deref().unwrap_or("GET").to_uppercase();
+    
+    let mut req_builder = match method.as_str() {
+        "POST" => client.post(&request.url),
+        _ => client.get(&request.url),
+    };
+    
+    req_builder = req_builder
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "SkillsDesktop/1.3.1");
     
     if let Some(key) = &request.api_key {
         if !key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", key));
+            req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
         }
     }
     
-    let response = req.send().await.map_err(|e| format!("Request failed: {}", e))?;
+    // Add body for POST requests
+    if method == "POST" {
+        if let Some(body) = &request.body {
+            req_builder = req_builder.body(body.clone());
+        }
+    }
+    
+    let response = req_builder.send().await.map_err(|e| {
+        let err_msg = format!("Request failed: {} (is_connect: {}, is_timeout: {})", 
+            e, e.is_connect(), e.is_timeout());
+        println!("[fetch_api] Error: {}", err_msg);
+        err_msg
+    })?;
+    
     let status = response.status().as_u16();
+    println!("[fetch_api] Response status: {}", status);
+    
     let body = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
     
     Ok(FetchApiResponse { status, body })

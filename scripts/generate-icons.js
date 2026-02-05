@@ -66,30 +66,32 @@ if (hasSips) {
     }
   }
 
-  // Generate ICO file (Windows)
+  // Generate ICO file (Windows) using ImageMagick
   console.log('\nGenerating icon.ico for Windows...');
   try {
-    // Create temp PNGs for ICO
     const icoSizes = [16, 24, 32, 48, 64, 128, 256];
     const tempFiles = [];
     
+    // Create temp PNGs for each size
     for (const size of icoSizes) {
       const tempPath = path.join(iconsDir, `temp_${size}.png`);
-      fs.copyFileSync(sourceImage, tempPath);
-      execSync(`sips -z ${size} ${size} "${tempPath}"`, { stdio: 'pipe' });
+      execSync(`convert "${sourceImage}" -resize ${size}x${size} "${tempPath}"`, { stdio: 'pipe' });
       tempFiles.push(tempPath);
     }
     
-    // Use iconutil alternative or just copy the 256 as ico
-    // For proper ICO, we'll just note that the user should use tauri icon command
-    console.log('  Note: For proper .ico generation, run: npx tauri icon data/app.png');
+    // Combine into ICO using ImageMagick
+    const icoPath = path.join(iconsDir, 'icon.ico');
+    execSync(`convert ${tempFiles.map(f => `"${f}"`).join(' ')} "${icoPath}"`, { stdio: 'pipe' });
     
     // Cleanup temp files
     for (const f of tempFiles) {
       fs.unlinkSync(f);
     }
+    
+    console.log('  ✓ icon.ico');
   } catch (err) {
-    console.error(`  ✗ ICO generation note: ${err.message}`);
+    console.error(`  ✗ ICO generation failed: ${err.message}`);
+    console.log('  Note: Install ImageMagick or run: npx tauri icon data/app.png');
   }
 
   // Generate ICNS file (macOS) with padding

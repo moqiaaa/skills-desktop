@@ -800,17 +800,24 @@ const Settings = () => {
                 <span className="font-mono font-semibold">v1.3.1</span>
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-base-content/60">Skills</span>
-                <span className="stat-badge bg-primary/10 text-primary text-xs">{marketplaceSkills.length}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-base-content/60">{i18n.language === 'zh' ? 'Agents' : 'Agents'}</span>
-                <span className="stat-badge bg-accent/10 text-accent text-xs">{agents.length}</span>
-              </div>
-
               <div className="divider my-2"></div>
+
+              <a
+                href="#"
+                className="flex items-center gap-2 text-base-content/70 hover:text-primary transition-colors"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  try {
+                    await invoke('open_url', { url: 'https://skills.lc' });
+                  } catch (error) {
+                    console.error('Failed to open URL:', error);
+                  }
+                }}
+              >
+                <Globe size={14} />
+                <span>SKILLS.LC</span>
+                <ExternalLink size={12} className="ml-auto" />
+              </a>
 
               <a
                 href="#"

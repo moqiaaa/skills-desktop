@@ -356,11 +356,9 @@ export const useSkillStore = create<SkillStore>()(
               if (skill.githubUrl && skill.githubUrl.includes('/tree/')) {
                 githubUrl = skill.githubUrl;
                 console.log(`  - Using API's githubUrl directly`);
-              } else {
+              } else if (skill.source) {
                 // FALLBACK: Construct githubUrl from source/branch
                 const branch = skill.branch || 'main';
-              
-              if (skill.source) {
                 const sourceParts = skill.source.split('/');
                 if (sourceParts.length >= 2) {
                   const owner = sourceParts[0];
@@ -368,15 +366,12 @@ export const useSkillStore = create<SkillStore>()(
                   const baseUrl = `https://github.com/${owner}/${repo}`;
                   
                   // Try to extract path from skillId
-                  // skillId format: "owner-repo-path-parts-skill-md" 
-                  // e.g., "lobehub-lobehub-agents-skills-project-overview-skill-md"
                   let skillPath = '';
                   if (skill.skillId) {
                     const skillIdLower = skill.skillId.toLowerCase();
                     const ownerLower = owner.toLowerCase();
                     const repoLower = repo.toLowerCase();
                     
-                    // Remove "owner-repo-" prefix and "-skill-md" suffix
                     let pathPart = skillIdLower;
                     if (pathPart.startsWith(`${ownerLower}-${repoLower}-`)) {
                       pathPart = pathPart.substring(`${ownerLower}-${repoLower}-`.length);
@@ -385,13 +380,8 @@ export const useSkillStore = create<SkillStore>()(
                       pathPart = pathPart.substring(0, pathPart.length - '-skill-md'.length);
                     }
                     
-                    // Convert dashes to slashes for the path
-                    // But be careful: skill names can have dashes too
-                    // The skill name is at the end, so we need to find where it starts
-                    const skillNameLower = skill.name.toLowerCase().replace(/-/g, '-');
-                    
+                    const skillNameLower = skill.name.toLowerCase();
                     if (pathPart.endsWith(skillNameLower)) {
-                      // Everything before the skill name is the directory path
                       const dirPath = pathPart.substring(0, pathPart.length - skillNameLower.length);
                       if (dirPath.endsWith('-')) {
                         skillPath = dirPath.substring(0, dirPath.length - 1).replace(/-/g, '/') + '/' + skill.name;
@@ -406,19 +396,13 @@ export const useSkillStore = create<SkillStore>()(
                   if (skillPath) {
                     githubUrl = `${baseUrl}/tree/${branch}/${skillPath}`;
                   } else if (sourceParts.length > 2) {
-                    // Source contains the path
                     const subPath = sourceParts.slice(2).join('/');
                     githubUrl = `${baseUrl}/tree/${branch}/${subPath}`;
                   } else {
-                    // Fallback to skill name
                     githubUrl = `${baseUrl}/tree/${branch}/${skill.name}`;
                   }
                 }
-              }
-              
-              // Override with explicit githubUrl if it contains /tree/ (full path)
-              if (skill.githubUrl && skill.githubUrl.includes('/tree/')) {
-                githubUrl = skill.githubUrl;
+                console.log(`  - Constructed githubUrl from source`);
               }
               
               console.log(`[Debug] Skill "${skill.name}" -> githubUrl:`, githubUrl);

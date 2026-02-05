@@ -26,7 +26,6 @@ const Settings = () => {
     saveProjectPaths,
     defaultInstallLocation,
     setDefaultInstallLocation,
-    marketplaceSkills,
     selectedProjectIndex,
     setSelectedProjectIndex,
     agents,

@@ -1,5 +1,6 @@
 export interface MarketplaceSkill {
   id: string;
+  skillId?: string;  // Original skillId from API for reporting
   name: string;
   author: string;
   authorAvatar: string;

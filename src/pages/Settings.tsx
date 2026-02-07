@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillStore } from '../store/useSkillStore';
-import { Plus, X, FolderOpen, ExternalLink, Package, Check, Cpu, Settings2, Palette, AlertTriangle, Globe, Link2, Link2Off, RefreshCw, Monitor, CheckCircle2, Github, Heart, MessageCircle, Terminal, Key, Server, Eye, EyeOff, Save, RotateCcw, Play } from 'lucide-react';
+import { Plus, X, FolderOpen, ExternalLink, Package, Check, Cpu, Settings2, Palette, AlertTriangle, Globe, Link2, Link2Off, RefreshCw, Monitor, CheckCircle2, Github, Heart, MessageCircle, Terminal, Key, Server, Eye, EyeOff, Save, RotateCcw, Play, XCircle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 
 const agentColors: Record<string, string> = {
@@ -54,6 +54,7 @@ const Settings = () => {
   const [localApiKey, setLocalApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiSaved, setApiSaved] = useState(false);
+  const [testResult, setTestResult] = useState<{show: boolean, success: boolean, message: string}>({show: false, success: false, message: ''});
 
   // Collapse states
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -175,9 +176,12 @@ const Settings = () => {
   const handleTestApi = async () => {
     // Only test if API URL is configured
     if (!localApiUrl) {
-      alert(i18n.language === 'zh' 
-        ? '请先配置 API 地址' 
-        : 'Please configure API URL first');
+      setTestResult({
+        show: true,
+        success: false,
+        message: i18n.language === 'zh' ? '请先配置 API 地址' : 'Please configure API URL first'
+      });
+      setTimeout(() => setTestResult({show: false, success: false, message: ''}), 3000);
       return;
     }
     
@@ -215,12 +219,22 @@ const Settings = () => {
       console.log('Skills Count:', data.data?.skills?.length || 0);
       console.log('========== [End API Test] ==========');
       
-      alert(i18n.language === 'zh' 
-        ? `测试成功! 状态: ${response.status}, Skills: ${data.data?.skills?.length || 0}` 
-        : `Test Success! Status: ${response.status}, Skills: ${data.data?.skills?.length || 0}`);
+      setTestResult({
+        show: true,
+        success: true,
+        message: i18n.language === 'zh' 
+          ? `测试成功! 状态: ${response.status}` 
+          : `Test Success! Status: ${response.status}`
+      });
     } catch (error) {
       console.error('API Test Error:', error);
-      alert(i18n.language === 'zh' ? `测试失败: ${error}` : `Test Failed: ${error}`);
+      setTestResult({
+        show: true,
+        success: false,
+        message: i18n.language === 'zh' ? `测试失败: ${error}` : `Test Failed: ${error}`
+      });
+    } finally {
+      setTimeout(() => setTestResult({show: false, success: false, message: ''}), 5000);
     }
   };
 
@@ -498,6 +512,15 @@ const Settings = () => {
                   {i18n.language === 'zh' 
                     ? '用于 API 认证的 Bearer Token' 
                     : 'Bearer token for API authentication'}
+                  {' • '}
+                  <a 
+                    href="https://skills.lc/docs/api-reference" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    {i18n.language === 'zh' ? '获取密钥' : 'Get API Key'}
+                  </a>
                 </p>
               </div>
 
@@ -544,6 +567,24 @@ const Settings = () => {
                   </span>
                 )}
               </div>
+
+              {/* Test Result */}
+              {testResult.show && (
+                <div
+                  className={`rounded-xl p-3 text-sm flex items-center gap-2 transition-all ${
+                    testResult.success
+                      ? 'bg-success/10 text-success border border-success/20'
+                      : 'bg-error/10 text-error border border-error/20'
+                  }`}
+                >
+                  {testResult.success ? (
+                    <CheckCircle2 size={16} className="shrink-0" />
+                  ) : (
+                    <XCircle size={16} className="shrink-0" />
+                  )}
+                  <span className="flex-1">{testResult.message}</span>
+                </div>
+              )}
 
               {/* Info */}
               <div className="bg-base-100 rounded-xl p-3 text-xs text-base-content/60 space-y-2">

@@ -532,21 +532,24 @@ export const useSkillStore = create<SkillStore>()(
         // Report install to API (non-blocking, fire and forget)
         const reportInstall = async () => {
           try {
-            // Use the original skillId from API (e.g., "facebook-react-claude-skills-extract-errors-skill-md")
-            const skillId = skill.skillId;
-            
-            if (!skillId) {
-              console.log('[installSkill] No skillId available for reporting');
-              return;
-            }
-            
-            const requestBody = {
-              skillId: skillId,
+            // Prepare request body - use skillId if available (from API), otherwise use githubUrl (from local data)
+            const requestBody: any = {
               source: 'desktop'
             };
             
-            console.log('[installSkill] Reporting install:');
-            console.log('[installSkill] - skillId:', skillId);
+            if (skill.skillId) {
+              // Priority 1: Use skillId from API response
+              requestBody.skillId = skill.skillId;
+              console.log('[installSkill] Reporting install with skillId:', skill.skillId);
+            } else if (skill.githubUrl) {
+              // Fallback: Use githubUrl for local data
+              requestBody.githubUrl = skill.githubUrl;
+              console.log('[installSkill] Reporting install with githubUrl:', skill.githubUrl);
+            } else {
+              console.log('[installSkill] No skillId or githubUrl available for reporting');
+              return;
+            }
+            
             console.log('[installSkill] - request body:', JSON.stringify(requestBody));
             
             const response: any = await invoke('fetch_api', {
@@ -657,6 +660,36 @@ export const useSkillStore = create<SkillStore>()(
         if (!result.success) {
           throw new Error(result.message || 'Import failed');
         }
+
+        // Report install to API (non-blocking, fire and forget)
+        const reportInstall = async () => {
+          try {
+            const requestBody = {
+              githubUrl: url,
+              source: 'desktop'
+            };
+            
+            console.log('[importFromGithub] Reporting install:');
+            console.log('[importFromGithub] - githubUrl:', url);
+            console.log('[importFromGithub] - request body:', JSON.stringify(requestBody));
+            
+            const response: any = await invoke('fetch_api', {
+              request: {
+                url: 'https://skills.lc/api/install',
+                apiKey: null,
+                method: 'POST',
+                body: JSON.stringify(requestBody)
+              }
+            });
+            console.log('[importFromGithub] Install report response:', response);
+          } catch (reportError) {
+            // Silently ignore - don't block installation
+            console.log('[importFromGithub] Install report failed (non-blocking):', reportError);
+          }
+        };
+        
+        // Fire and forget - don't await
+        reportInstall();
 
         // 重新扫描
         await get().scanLocalSkills();
@@ -861,6 +894,38 @@ export const useSkillStore = create<SkillStore>()(
               skipSecurityCheck: false
             }
           });
+
+          // Report update/reinstall to API (non-blocking, fire and forget)
+          if (result.success) {
+            const reportInstall = async () => {
+              try {
+                const requestBody = {
+                  githubUrl: skill.sourceUrl,
+                  source: 'desktop-update'
+                };
+                
+                console.log('[reinstallSkill] Reporting update:');
+                console.log('[reinstallSkill] - githubUrl:', skill.sourceUrl);
+                console.log('[reinstallSkill] - request body:', JSON.stringify(requestBody));
+                
+                const response: any = await invoke('fetch_api', {
+                  request: {
+                    url: 'https://skills.lc/api/install',
+                    apiKey: null,
+                    method: 'POST',
+                    body: JSON.stringify(requestBody)
+                  }
+                });
+                console.log('[reinstallSkill] Update report response:', response);
+              } catch (reportError) {
+                // Silently ignore - don't block reinstallation
+                console.log('[reinstallSkill] Update report failed (non-blocking):', reportError);
+              }
+            };
+            
+            // Fire and forget - don't await
+            reportInstall();
+          }
 
           return result.success;
         } catch (error) {

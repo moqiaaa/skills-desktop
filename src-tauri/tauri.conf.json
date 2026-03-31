@@ -4,8 +4,8 @@
   "version": "1.3.1",
   "identifier": "com.skillmanager.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev -- --host 0.0.0.0 --port 4273",
+    "devUrl": "http://localhost:4273",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

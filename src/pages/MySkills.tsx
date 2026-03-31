@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSkillStore } from '../store/useSkillStore';
-import { Trash2, Eye, FolderOpen, X, Github, HardDrive, Plus, ExternalLink, RefreshCw, AlertCircle, CheckCircle, Package, Calendar, Download, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Eye, FolderOpen, X, Github, HardDrive, Plus, ExternalLink, RefreshCw, AlertCircle, CheckCircle, Package, Calendar, Download, CheckSquare, Square, Search, Tag, Pencil } from 'lucide-react';
 import type { InstalledSkill } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -15,6 +15,7 @@ const MySkills = () => {
     updateSelectedSkills,
     checkSkillUpdates,
     reinstallSkill,
+    saveSkillMetadata,
     isCheckingUpdates,
     isUpdating
   } = useSkillStore();
@@ -34,6 +35,12 @@ const MySkills = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [updateResult, setUpdateResult] = useState<{show: boolean, success: number, failed: number} | null>(null);
   const [updatingSkillId, setUpdatingSkillId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<InstalledSkill | null>(null);
+  const [editingNote, setEditingNote] = useState('');
+  const [editingTagsInput, setEditingTagsInput] = useState('');
+  const [isSavingMetadata, setIsSavingMetadata] = useState(false);
 
   const handleUninstall = async (skill: InstalledSkill) => {
     if (isDeleting) return;
@@ -131,9 +138,76 @@ const MySkills = () => {
     scanLocalSkills();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const parseTagsInput = (input: string) => (
+    Array.from(
+      new Set(
+        input
+          .split(',')
+          .map(tag => tag.trim())
+          .filter(Boolean)
+      )
+    )
+  );
+
+  const openMetadataModal = (skill: InstalledSkill) => {
+    setEditingSkill(skill);
+    setEditingNote(skill.note || '');
+    setEditingTagsInput((skill.tags || []).join(', '));
+    setShowMetadataModal(true);
+  };
+
+  const handleSaveMetadata = async () => {
+    if (!editingSkill || isSavingMetadata) return;
+    setIsSavingMetadata(true);
+
+    try {
+      const tags = parseTagsInput(editingTagsInput);
+      await saveSkillMetadata(editingSkill.id, editingNote, tags);
+
+      if (selectedSkill?.id === editingSkill.id) {
+        setSelectedSkill({
+          ...selectedSkill,
+          note: editingNote.trim(),
+          tags
+        });
+      }
+
+      setDeleteResult({
+        show: true,
+        success: true,
+        message: i18n.language === 'zh' ? '备注和标签已保存' : 'Note and tags saved'
+      });
+      setShowMetadataModal(false);
+      setEditingSkill(null);
+      setEditingNote('');
+      setEditingTagsInput('');
+      setTimeout(() => setDeleteResult({show: false, success: false, message: ''}), 3000);
+    } catch (error: any) {
+      const errMsg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+      setDeleteResult({
+        show: true,
+        success: false,
+        message: `${i18n.language === 'zh' ? '保存失败' : 'Save failed'}: ${errMsg}`
+      });
+      setTimeout(() => setDeleteResult({show: false, success: false, message: ''}), 3000);
+    } finally {
+      setIsSavingMetadata(false);
+    }
+  };
+
   const filteredSkills = installedSkills.filter(skill => {
-    if (activeTab === 'all') return true;
-    return skill.type === activeTab;
+    const tabMatched = activeTab === 'all' || skill.type === activeTab;
+    if (!tabMatched) return false;
+
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    const inTags = (skill.tags || []).some(tag => tag.toLowerCase().includes(query));
+    const inNote = (skill.note || '').toLowerCase().includes(query);
+    const inName = skill.name.toLowerCase().includes(query);
+    const inDescription = (skill.description || '').toLowerCase().includes(query);
+
+    return inTags || inNote || inName || inDescription;
   });
 
   const handleViewSkill = async (skill: InstalledSkill) => {
@@ -268,7 +342,7 @@ const MySkills = () => {
           <div className="alert alert-info shadow-lg rounded-2xl">
             <span>
               {i18n.language === 'zh'
-                ? `更新完成：${updateResult.success} 成功，${updateResult.failed} 失败`
+                ? `更新完成：{updateResult.success} 成功，{updateResult.failed} 失败`
                 : `Update complete: ${updateResult.success} succeeded, ${updateResult.failed} failed`}
             </span>
           </div>
@@ -378,6 +452,19 @@ const MySkills = () => {
         )}
       </div>
 
+      <div className="flex items-center gap-2">
+        <label className="input input-bordered input-sm w-full max-w-md rounded-xl flex items-center gap-2">
+          <Search size={14} className="opacity-60" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="grow"
+            placeholder={i18n.language === 'zh' ? '搜索名称、备注、标签' : 'Search name, note, or tags'}
+          />
+        </label>
+      </div>
+
       {/* Skills List */}
       {filteredSkills.length > 0 ? (
         <div className="bg-base-200/50 rounded-2xl border border-base-300 overflow-hidden">
@@ -443,6 +530,27 @@ const MySkills = () => {
                   <p className="text-xs text-base-content/50 truncate" title={skill.description}>
                     {skill.description}
                   </p>
+                  {(skill.note || (skill.tags && skill.tags.length > 0)) && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {skill.note && (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs text-base-content/70 bg-base-100 border border-base-300 rounded-full px-2 py-0.5 max-w-full"
+                          title={skill.note}
+                        >
+                          <span className="truncate">{skill.note}</span>
+                        </span>
+                      )}
+                      {(skill.tags || []).map((tag) => (
+                        <span
+                          key={`${skill.id}-${tag}`}
+                          className="inline-flex items-center gap-1 text-xs text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5"
+                        >
+                          <Tag size={10} />
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Source - Clickable */}
@@ -506,6 +614,13 @@ const MySkills = () => {
                   )}
                   <button
                     className="btn btn-ghost btn-xs rounded-lg"
+                    onClick={() => openMetadataModal(skill)}
+                    title={i18n.language === 'zh' ? '编辑备注标签' : 'Edit note/tags'}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-xs rounded-lg"
                     onClick={() => handleViewSkill(skill)}
                     title={t('view')}
                   >
@@ -529,7 +644,7 @@ const MySkills = () => {
           <FolderOpen size={48} strokeWidth={1} className="mx-auto mb-3 opacity-50 text-base-content/40" />
           <p className="text-base-content/50">
             {i18n.language === 'zh'
-              ? `暂无 ${activeTab !== 'all' && (activeTab === 'system' ? '系统级' : '项目级')} Skills`
+              ? `No ${activeTab !== 'all' ? activeTab : ''} Skills`
               : `No ${activeTab !== 'all' ? activeTab : ''} Skills found`}
           </p>
           <p className="text-sm mt-2 text-base-content/40">
@@ -580,6 +695,16 @@ const MySkills = () => {
                   {selectedSkill.author && (
                     <span className="flex items-center gap-1">
                       {i18n.language === 'zh' ? '作者' : 'Author'}: {selectedSkill.author}
+                    </span>
+                  )}
+                  {selectedSkill.note && (
+                    <span className="flex items-center gap-1">
+                      {i18n.language === 'zh' ? '备注' : 'Note'}: {selectedSkill.note}
+                    </span>
+                  )}
+                  {(selectedSkill.tags || []).length > 0 && (
+                    <span className="flex items-center gap-1">
+                      {i18n.language === 'zh' ? '标签' : 'Tags'}: {(selectedSkill.tags || []).join(', ')}
                     </span>
                   )}
                 </div>
@@ -647,6 +772,92 @@ const MySkills = () => {
         </div>
       )}
 
+      {showMetadataModal && editingSkill && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-lg rounded-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="font-bold text-xl">
+                  {i18n.language === 'zh' ? '编辑备注和标签' : 'Edit Note & Tags'}
+                </h3>
+                <p className="text-sm text-base-content/50 mt-1">{editingSkill.name}</p>
+              </div>
+              <button
+                className="btn btn-sm btn-circle btn-ghost"
+                onClick={() => {
+                  if (isSavingMetadata) return;
+                  setShowMetadataModal(false);
+                  setEditingSkill(null);
+                  setEditingNote('');
+                  setEditingTagsInput('');
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              <div className="form-control">
+                <label className="label pb-1">
+                  <span className="label-text font-semibold">{i18n.language === 'zh' ? '备注' : 'Note'}</span>
+                </label>
+                <textarea
+                  className="textarea textarea-bordered rounded-xl min-h-[110px]"
+                  value={editingNote}
+                  onChange={(e) => setEditingNote(e.target.value)}
+                  maxLength={500}
+                  placeholder={i18n.language === 'zh' ? '给这个 skill 写一点备注...' : 'Write a note for this skill...'}
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label pb-1">
+                  <span className="label-text font-semibold">{i18n.language === 'zh' ? '标签' : 'Tags'}</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered rounded-xl"
+                  value={editingTagsInput}
+                  onChange={(e) => setEditingTagsInput(e.target.value)}
+                  placeholder={i18n.language === 'zh' ? '用英文逗号分隔，例如：工作, 常用, 调试' : 'Comma-separated, e.g. work, daily, debug'}
+                />
+                <label className="label pt-1">
+                  <span className="label-text-alt text-base-content/50">
+                    {i18n.language === 'zh' ? '标签可用于搜索和筛选' : 'Tags are searchable in My Skills'}
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  className="btn btn-ghost rounded-xl"
+                  onClick={() => {
+                    if (isSavingMetadata) return;
+                    setShowMetadataModal(false);
+                    setEditingSkill(null);
+                    setEditingNote('');
+                    setEditingTagsInput('');
+                  }}
+                >
+                  {i18n.language === 'zh' ? '取消' : 'Cancel'}
+                </button>
+                <button
+                  className="btn btn-primary rounded-xl shadow-lg shadow-primary/25"
+                  onClick={handleSaveMetadata}
+                  disabled={isSavingMetadata}
+                >
+                  {isSavingMetadata ? (
+                    <span className="loading loading-spinner loading-xs" />
+                  ) : (
+                    i18n.language === 'zh' ? '保存' : 'Save'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import Modal */}
       {showImportModal && (
         <div className="modal modal-open">
@@ -679,7 +890,7 @@ const MySkills = () => {
                       <div className="font-semibold text-base mb-1">{t('importFromGitHub')}</div>
                       <div className="text-sm text-base-content/60">
                         {i18n.language === 'zh'
-                          ? '输入 GitHub 仓库 URL，支持完整仓库或子目录'
+                          ? 'Input GitHub repository URL (repo or subdirectory)'
                           : 'Enter GitHub repository URL, supports full repo or subdirectory'}
                       </div>
                     </div>
@@ -746,14 +957,30 @@ const MySkills = () => {
                         {i18n.language === 'zh' ? '本地文件夹路径' : 'Local Folder Path'}
                       </span>
                     </label>
-                    <input
-                      type="text"
-                      placeholder="/Users/user/Downloads/my-skill"
-                      className="input input-bordered w-full rounded-xl"
-                      value={importPath}
-                      onChange={(e) => setImportPath(e.target.value)}
-                      autoFocus
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="/Users/user/Downloads/my-skill"
+                        className="input input-bordered flex-1 rounded-xl"
+                        value={importPath}
+                        onChange={(e) => setImportPath(e.target.value)}
+                        autoFocus
+                      />
+                      <button
+                        className="btn btn-ghost rounded-xl gap-1"
+                        onClick={async () => {
+                          try {
+                            const folder = await invoke<string | null>('pick_folder');
+                            if (folder) setImportPath(folder);
+                          } catch (e) {
+                            console.error('Failed to pick folder:', e);
+                          }
+                        }}
+                      >
+                        <FolderOpen size={16} />
+                        {i18n.language === 'zh' ? '浏览' : 'Browse'}
+                      </button>
+                    </div>
                     <label className="label">
                       <span className="label-text-alt text-base-content/50">
                         {i18n.language === 'zh'

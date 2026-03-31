@@ -48,7 +48,8 @@ const Settings = () => {
   const [newPath, setNewPath] = useState('');
   const [isCreatingSymlinks, setIsCreatingSymlinks] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-  
+  const [symlinkResult, setSymlinkResult] = useState<{show: boolean, success: boolean, message: string} | null>(null);
+
   // API Settings local state
   const [localApiUrl, setLocalApiUrl] = useState('');
   const [localApiKey, setLocalApiKey] = useState('');
@@ -113,12 +114,42 @@ const Settings = () => {
     }
   };
 
+  const formatSymlinkError = (error: unknown) => {
+    if (typeof error === 'string') return error;
+    if (error instanceof Error) return error.message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown error';
+    }
+  };
+
   const handleCreateAllSymlinks = async () => {
     setIsCreatingSymlinks(true);
     try {
-      await createAllSymlinks();
+      const statuses = await createAllSymlinks();
+      const successCount = statuses.filter(s => s.exists && s.isValid).length;
+      const failedStatuses = statuses.filter(s => s.error);
+      if (failedStatuses.length > 0) {
+        const errors = failedStatuses.map(s => `${s.agentName}: ${s.error}`).join('\n');
+        alert(i18n.language === 'zh'
+          ? `部分链接失败：\n${errors}`
+          : `Some links failed:\n${errors}`);
+      }
+      setSymlinkResult({
+        show: true,
+        success: failedStatuses.length === 0,
+        message: i18n.language === 'zh'
+          ? `配置完成：${successCount} 成功，${failedStatuses.length} 失败`
+          : `Setup complete: ${successCount} succeeded, ${failedStatuses.length} failed`
+      });
+      setTimeout(() => setSymlinkResult(null), 3000);
     } catch (error) {
       console.error('Failed to create symlinks:', error);
+      const message = formatSymlinkError(error);
+      alert(i18n.language === 'zh'
+        ? `创建链接失败：${message}`
+        : `Failed to create symlinks: ${message}`);
     } finally {
       setIsCreatingSymlinks(false);
     }
@@ -127,9 +158,23 @@ const Settings = () => {
   const handleCreateSymlink = async (agentId: string) => {
     setActionInProgress(agentId);
     try {
-      await createSymlink(agentId);
+      const status = await createSymlink(agentId);
+      if (status.error) {
+        alert(i18n.language === 'zh'
+          ? `链接 ${(agents.find(a => a.id === agentId)?.displayName || agentId)} 失败：${status.error}`
+          : `Failed to link ${(agents.find(a => a.id === agentId)?.displayName || agentId)}: ${status.error}`);
+      } else if (status.exists && status.isValid) {
+        setSymlinkResult({ show: true, success: true, message: i18n.language === 'zh'
+          ? `${(agents.find(a => a.id === agentId)?.displayName || agentId)} 链接成功`
+          : `${(agents.find(a => a.id === agentId)?.displayName || agentId)} linked successfully` });
+        setTimeout(() => setSymlinkResult(null), 3000);
+      }
     } catch (error) {
       console.error(`Failed to create symlink for ${agentId}:`, error);
+      const message = formatSymlinkError(error);
+      alert(i18n.language === 'zh'
+        ? `创建 ${(agents.find(a => a.id === agentId)?.displayName || agentId)} 的链接失败：${message}`
+        : `Failed to link ${(agents.find(a => a.id === agentId)?.displayName || agentId)}: ${message}`);
     } finally {
       setActionInProgress(null);
     }
@@ -139,8 +184,20 @@ const Settings = () => {
     setActionInProgress(agentId);
     try {
       await removeSymlink(agentId);
+      const name = agents.find(a => a.id === agentId)?.displayName || agentId;
+      setSymlinkResult({
+        show: true,
+        success: true,
+        message: i18n.language === 'zh' ? `${name} 已移除链接` : `${name} unlinked`
+      });
+      setTimeout(() => setSymlinkResult(null), 3000);
     } catch (error) {
       console.error(`Failed to remove symlink for ${agentId}:`, error);
+      const name = agents.find(a => a.id === agentId)?.displayName || agentId;
+      const message = formatSymlinkError(error);
+      alert(i18n.language === 'zh'
+        ? `移除 ${name} 链接失败：${message}`
+        : `Failed to unlink ${name}: ${message}`);
     } finally {
       setActionInProgress(null);
     }
@@ -250,6 +307,15 @@ const Settings = () => {
 
   return (
     <div className="flex gap-6 max-w-7xl">
+      {/* Symlink Toast */}
+      {symlinkResult?.show && (
+        <div className="toast toast-top toast-end z-50">
+          <div className={`alert ${symlinkResult.success ? 'alert-success' : 'alert-error'} shadow-lg rounded-2xl`}>
+            <span>{symlinkResult.message}</span>
+          </div>
+        </div>
+      )}
+
       {/* Left: Settings Sections */}
       <div className="flex-1 space-y-3">
         {/* Header */}
@@ -779,6 +845,20 @@ const Settings = () => {
                   onChange={(e) => setNewPath(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleAddPath()}
                 />
+                <button
+                  className="btn btn-sm btn-ghost gap-1"
+                  onClick={async () => {
+                    try {
+                      const folder = await invoke<string | null>('pick_folder');
+                      if (folder) setNewPath(folder);
+                    } catch (e) {
+                      console.error('Failed to pick folder:', e);
+                    }
+                  }}
+                >
+                  <FolderOpen size={14} />
+                  {i18n.language === 'zh' ? '浏览' : 'Browse'}
+                </button>
                 <button
                   className="btn btn-sm btn-primary gap-1"
                   onClick={handleAddPath}

@@ -7,10 +7,10 @@ use walkdir::WalkDir;
 mod security;
 use security::SecurityReport;
 
-// 主目录配置
+// 涓荤洰褰曢厤缃?
 const PRIMARY_SKILLS_DIR: &str = ".claude/skills";
 
-// 代理配置 - 基于 skill-dir.md 标准
+// 浠ｇ悊閰嶇疆 - 鍩轰簬 skill-dir.md 鏍囧噯
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub id: String,
@@ -25,7 +25,7 @@ pub struct AgentConfig {
     pub color: String,
 }
 
-// 软链接状态
+// 杞摼鎺ョ姸鎬?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymlinkStatus {
     #[serde(rename = "agentId")]
@@ -44,7 +44,7 @@ pub struct SymlinkStatus {
 
 fn get_agent_configs() -> Vec<AgentConfig> {
     vec![
-        // ==================== 原生兼容代理 ====================
+        // ==================== 鍘熺敓鍏煎浠ｇ悊 ====================
         AgentConfig {
             id: "claude-code".to_string(),
             name: "claude-code".to_string(),
@@ -99,7 +99,7 @@ fn get_agent_configs() -> Vec<AgentConfig> {
             compatibility: "native".to_string(),
             color: "#FF6B6B".to_string(),
         },
-        // ==================== 需要软链接的代理 ====================
+        // ==================== 闇€瑕佽蒋閾炬帴鐨勪唬鐞?====================
         AgentConfig {
             id: "codex".to_string(),
             name: "codex".to_string(),
@@ -166,7 +166,7 @@ pub struct SkillInfo {
     pub path: String,
     #[serde(rename = "skillType")]
     pub skill_type: String,
-    // 新增元数据字段
+    // 鏂板鍏冩暟鎹瓧娈?
     pub version: Option<String>,
     pub author: Option<String>,
     pub source: Option<String>,  // "marketplace" | "github" | "local"
@@ -176,9 +176,11 @@ pub struct SkillInfo {
     pub install_date: Option<u64>,
     #[serde(rename = "commitHash")]
     pub commit_hash: Option<String>,
+    pub note: Option<String>,
+    pub tags: Option<Vec<String>>,
 }
 
-// Skill 元数据 - 存储在每个 skill 目录的 .skill-meta.json
+// Skill 鍏冩暟鎹?- 瀛樺偍鍦ㄦ瘡涓?skill 鐩綍鐨?.skill-meta.json
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SkillMetadata {
     pub source: String,  // "marketplace" | "github" | "local"
@@ -195,6 +197,8 @@ pub struct SkillMetadata {
     pub description_zh: Option<String>,
     #[serde(rename = "descriptionEn")]
     pub description_en: Option<String>,
+    pub note: Option<String>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -213,7 +217,7 @@ pub struct ImportGithubRequest {
     pub install_path: Option<String>,
     #[serde(rename = "skipSecurityCheck")]
     pub skip_security_check: bool,
-    // 市场元数据（从市场安装时传入）
+    // 甯傚満鍏冩暟鎹紙浠庡競鍦哄畨瑁呮椂浼犲叆锛?
     #[serde(rename = "isMarketplace")]
     pub is_marketplace: Option<bool>,
     pub description: Option<String>,
@@ -253,6 +257,14 @@ pub struct SavePathsRequest {
     pub paths: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateSkillMetadataRequest {
+    #[serde(rename = "skillPath")]
+    pub skill_path: String,
+    pub note: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
 fn get_claude_skills_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(PRIMARY_SKILLS_DIR))
 }
@@ -261,14 +273,14 @@ fn get_config_path() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".claude").join("skill-manager-config.json"))
 }
 
-// 从 SKILL.md 中提取版本号
+// 浠?SKILL.md 涓彁鍙栫増鏈彿
 fn extract_version_from_md(content: &str) -> Option<String> {
-    // 尝试匹配常见的版本格式
-    // 例如: "Version: 1.0.0", "v1.0.0", "**Version**: 1.0.0"
+    // 灏濊瘯鍖归厤甯歌鐨勭増鏈牸寮?
+    // 渚嬪: "Version: 1.0.0", "v1.0.0", "**Version**: 1.0.0"
     for line in content.lines() {
         let line_lower = line.to_lowercase();
         if line_lower.contains("version") {
-            // 提取版本号
+            // 鎻愬彇鐗堟湰鍙?
             if let Some(version) = extract_version_number(line) {
                 return Some(version);
             }
@@ -278,7 +290,7 @@ fn extract_version_from_md(content: &str) -> Option<String> {
 }
 
 fn extract_version_number(text: &str) -> Option<String> {
-    // 匹配 v1.0.0 或 1.0.0 格式
+    // 鍖归厤 v1.0.0 鎴?1.0.0 鏍煎紡
     let re_patterns = [
         r"v?(\d+\.\d+\.\d+)",
         r"v?(\d+\.\d+)",
@@ -295,12 +307,12 @@ fn extract_version_number(text: &str) -> Option<String> {
     None
 }
 
-// 从 SKILL.md 中提取作者
+// 浠?SKILL.md 涓彁鍙栦綔鑰?
 fn extract_author_from_md(content: &str) -> Option<String> {
     for line in content.lines() {
         let line_lower = line.to_lowercase();
         if line_lower.contains("author") {
-            // 提取 : 或 **: 后面的内容
+            // 鎻愬彇 : 鎴?**: 鍚庨潰鐨勫唴瀹?
             if let Some(pos) = line.find(':') {
                 let author = line[pos + 1..].trim();
                 let author = author.trim_matches(|c| c == '*' || c == '`');
@@ -313,7 +325,7 @@ fn extract_author_from_md(content: &str) -> Option<String> {
     None
 }
 
-// 加载 skill 元数据
+// 鍔犺浇 skill 鍏冩暟鎹?
 fn load_skill_metadata(skill_dir: &PathBuf) -> Option<SkillMetadata> {
     let meta_path = skill_dir.join(".skill-meta.json");
     if meta_path.exists() {
@@ -324,7 +336,7 @@ fn load_skill_metadata(skill_dir: &PathBuf) -> Option<SkillMetadata> {
     None
 }
 
-// 保存 skill 元数据
+// 淇濆瓨 skill 鍏冩暟鎹?
 fn save_skill_metadata(skill_dir: &PathBuf, metadata: &SkillMetadata) -> Result<(), String> {
     let meta_path = skill_dir.join(".skill-meta.json");
     let content = serde_json::to_string_pretty(metadata)
@@ -334,7 +346,7 @@ fn save_skill_metadata(skill_dir: &PathBuf, metadata: &SkillMetadata) -> Result<
     Ok(())
 }
 
-// 获取当前时间戳
+// 鑾峰彇褰撳墠鏃堕棿鎴?
 fn current_timestamp() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -343,16 +355,16 @@ fn current_timestamp() -> u64 {
         .unwrap_or(0)
 }
 
-// 解析 YAML frontmatter，返回 (description, name, version)
+// 瑙ｆ瀽 YAML frontmatter锛岃繑鍥?(description, name, version)
 fn parse_yaml_frontmatter(content: &str) -> (Option<String>, Option<String>, Option<String>) {
     let lines: Vec<&str> = content.lines().collect();
 
-    // 检查是否以 --- 开头
+    // 妫€鏌ユ槸鍚︿互 --- 寮€澶?
     if lines.is_empty() || lines[0].trim() != "---" {
         return (None, None, None);
     }
 
-    // 找到结束的 ---
+    // 鎵惧埌缁撴潫鐨?---
     let mut end_index = None;
     for (i, line) in lines.iter().enumerate().skip(1) {
         if line.trim() == "---" {
@@ -366,7 +378,7 @@ fn parse_yaml_frontmatter(content: &str) -> (Option<String>, Option<String>, Opt
         None => return (None, None, None),
     };
 
-    // 解析 frontmatter 中的字段
+    // 瑙ｆ瀽 frontmatter 涓殑瀛楁
     let mut description = None;
     let mut name = None;
     let mut version = None;
@@ -374,17 +386,17 @@ fn parse_yaml_frontmatter(content: &str) -> (Option<String>, Option<String>, Opt
     for line in &lines[1..end_index] {
         let line = line.trim();
 
-        // 解析 description 字段
+        // 瑙ｆ瀽 description 瀛楁
         if line.starts_with("description:") {
             let value = line.trim_start_matches("description:").trim();
-            // 移除引号
+            // 绉婚櫎寮曞彿
             let value = value.trim_matches('"').trim_matches('\'');
             if !value.is_empty() {
                 description = Some(value.to_string());
             }
         }
 
-        // 解析 name 字段
+        // 瑙ｆ瀽 name 瀛楁
         if line.starts_with("name:") {
             let value = line.trim_start_matches("name:").trim();
             let value = value.trim_matches('"').trim_matches('\'');
@@ -393,7 +405,7 @@ fn parse_yaml_frontmatter(content: &str) -> (Option<String>, Option<String>, Opt
             }
         }
 
-        // 解析 version 字段
+        // 瑙ｆ瀽 version 瀛楁
         if line.starts_with("version:") {
             let value = line.trim_start_matches("version:").trim();
             let value = value.trim_matches('"').trim_matches('\'');
@@ -411,10 +423,10 @@ fn parse_skill_md(path: &PathBuf, skill_type: &str) -> Option<SkillInfo> {
     let skill_dir = path.parent()?;
     let name = skill_dir.file_name()?.to_string_lossy().to_string();
 
-    // 尝试解析 YAML frontmatter
+    // 灏濊瘯瑙ｆ瀽 YAML frontmatter
     let (frontmatter_desc, frontmatter_name, frontmatter_version) = parse_yaml_frontmatter(&content);
 
-    // 如果没有 frontmatter，使用旧方法提取描述
+    // 濡傛灉娌℃湁 frontmatter锛屼娇鐢ㄦ棫鏂规硶鎻愬彇鎻忚堪
     let description = frontmatter_desc.unwrap_or_else(|| {
         content
             .lines()
@@ -427,17 +439,17 @@ fn parse_skill_md(path: &PathBuf, skill_type: &str) -> Option<SkillInfo> {
             .collect::<String>()
     });
 
-    // 使用 frontmatter 中的 name，如果没有则使用目录名
+    // 浣跨敤 frontmatter 涓殑 name锛屽鏋滄病鏈夊垯浣跨敤鐩綍鍚?
     let skill_name = frontmatter_name.unwrap_or(name);
 
-    // 从 SKILL.md 提取版本和作者
+    // 浠?SKILL.md 鎻愬彇鐗堟湰鍜屼綔鑰?
     let version_from_md = frontmatter_version.or_else(|| extract_version_from_md(&content));
     let author_from_md = extract_author_from_md(&content);
 
-    // 尝试加载元数据
+    // 灏濊瘯鍔犺浇鍏冩暟鎹?
     let metadata = load_skill_metadata(&skill_dir.to_path_buf());
 
-    // 优先使用元数据中的描述（从市场安装时保存的中英文描述）
+    // 浼樺厛浣跨敤鍏冩暟鎹腑鐨勬弿杩帮紙浠庡競鍦哄畨瑁呮椂淇濆瓨鐨勪腑鑻辨枃鎻忚堪锛?
     let (desc_zh, desc_en) = if let Some(ref m) = metadata {
         (m.description_zh.clone(), m.description_en.clone())
     } else {
@@ -457,6 +469,8 @@ fn parse_skill_md(path: &PathBuf, skill_type: &str) -> Option<SkillInfo> {
         source_url: metadata.as_ref().and_then(|m| m.source_url.clone()),
         install_date: metadata.as_ref().map(|m| m.install_date),
         commit_hash: metadata.as_ref().and_then(|m| m.commit_hash.clone()),
+        note: metadata.as_ref().and_then(|m| m.note.clone()),
+        tags: metadata.as_ref().and_then(|m| m.tags.clone()),
     })
 }
 
@@ -470,7 +484,7 @@ fn scan_skills() -> Result<ScanResult, String> {
             for entry in WalkDir::new(&skills_dir).max_depth(3) {
                 if let Ok(entry) = entry {
                     let path = entry.path();
-                    if path.file_name().map(|n| n == "SKILL.md").unwrap_or(false) {
+                    if path.file_name().map(|n| n.to_ascii_lowercase() == "skill.md").unwrap_or(false) {
                         if let Some(skill) = parse_skill_md(&path.to_path_buf(), "system") {
                             system_skills.push(skill);
                         }
@@ -487,7 +501,7 @@ fn scan_skills() -> Result<ScanResult, String> {
                 for entry in WalkDir::new(&skills_dir).max_depth(3) {
                     if let Ok(entry) = entry {
                         let path = entry.path();
-                        if path.file_name().map(|n| n == "SKILL.md").unwrap_or(false) {
+                        if path.file_name().map(|n| n.to_ascii_lowercase() == "skill.md").unwrap_or(false) {
                             if let Some(skill) = parse_skill_md(&path.to_path_buf(), "project") {
                                 project_skills.push(skill);
                             }
@@ -502,6 +516,59 @@ fn scan_skills() -> Result<ScanResult, String> {
         system_skills,
         project_skills,
     })
+}
+
+#[tauri::command]
+fn update_skill_metadata(request: UpdateSkillMetadataRequest) -> Result<(), String> {
+    if request.skill_path.is_empty() {
+        return Err("Skill path is empty".to_string());
+    }
+
+    let skill_dir = PathBuf::from(&request.skill_path);
+    if !skill_dir.exists() {
+        return Err(format!("Skill path does not exist: {}", request.skill_path));
+    }
+
+    let skill_path_str = skill_dir.to_string_lossy().to_string();
+    if !skill_path_str.contains(".claude") || !skill_path_str.contains("skills") {
+        return Err("Invalid skill path - must be in .claude/skills directory".to_string());
+    }
+
+    let normalized_note = request
+        .note
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    let normalized_tags = request
+        .tags
+        .map(|tags| {
+            let mut cleaned: Vec<String> = tags
+                .into_iter()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect();
+            cleaned.dedup();
+            cleaned
+        })
+        .filter(|tags| !tags.is_empty());
+
+    let mut metadata = load_skill_metadata(&skill_dir).unwrap_or(SkillMetadata {
+        source: "local".to_string(),
+        source_url: None,
+        install_date: current_timestamp(),
+        commit_hash: None,
+        version: None,
+        author: None,
+        description: None,
+        description_zh: None,
+        description_en: None,
+        note: None,
+        tags: None,
+    });
+
+    metadata.note = normalized_note;
+    metadata.tags = normalized_tags;
+    save_skill_metadata(&skill_dir, &metadata)
 }
 
 #[tauri::command(async)]
@@ -522,7 +589,7 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
             };
         }
 
-        // 始终安装到 Claude Code 主目录
+        // 濮嬬粓瀹夎鍒?Claude Code 涓荤洰褰?
         let install_dir = if let Some(path) = &request.install_path {
             PathBuf::from(path).join(".claude").join("skills")
         } else {
@@ -628,17 +695,19 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
                     };
                 }
 
-                // 保存元数据 (sparse checkout)
+                // 淇濆瓨鍏冩暟鎹?(sparse checkout)
                 let metadata = SkillMetadata {
                     source: "github".to_string(),
                     source_url: Some(repo_url.clone()),
                     install_date: current_timestamp(),
-                    commit_hash: None,  // sparse checkout 不保留 git 信息
+                    commit_hash: None,  // sparse checkout 涓嶄繚鐣?git 淇℃伅
                     version: None,
                     author: None,
                     description: None,
                     description_zh: None,
                     description_en: None,
+                    note: None,
+                    tags: None,
                 };
                 let _ = save_skill_metadata(&target_dir, &metadata);
             } else {
@@ -680,7 +749,7 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
             }
         }
 
-        // 获取 commit hash
+        // 鑾峰彇 commit hash
         let commit_hash = Command::new("git")
             .current_dir(&target_dir)
             .args(["rev-parse", "HEAD"])
@@ -694,17 +763,19 @@ async fn import_github_skill(request: ImportGithubRequest) -> Result<ImportResul
                 }
             });
 
-        // 保存元数据
+        // 淇濆瓨鍏冩暟鎹?
         let metadata = SkillMetadata {
             source: "github".to_string(),
             source_url: Some(repo_url.clone()),
             install_date: current_timestamp(),
             commit_hash,
-            version: None,  // 会从 SKILL.md 中提取
-            author: None,   // 会从 SKILL.md 中提取
+            version: None,  // 浼氫粠 SKILL.md 涓彁鍙?
+            author: None,   // 浼氫粠 SKILL.md 涓彁鍙?
             description: None,
             description_zh: None,
             description_en: None,
+            note: None,
+            tags: None,
         };
         let _ = save_skill_metadata(&target_dir, &metadata);
 
@@ -787,7 +858,7 @@ fn import_local_skill(request: ImportLocalRequest) -> Result<ImportResult, Strin
 
     copy_dir_all(&source, &target_dir).map_err(|e| e.to_string())?;
 
-    // 保存本地导入的元数据
+    // 淇濆瓨鏈湴瀵煎叆鐨勫厓鏁版嵁
     let metadata = SkillMetadata {
         source: "local".to_string(),
         source_url: None,
@@ -798,6 +869,8 @@ fn import_local_skill(request: ImportLocalRequest) -> Result<ImportResult, Strin
         description: None,
         description_zh: None,
         description_en: None,
+        note: None,
+        tags: None,
     };
     let _ = save_skill_metadata(&target_dir, &metadata);
 
@@ -975,7 +1048,7 @@ fn scan_all_skills_security() -> Result<Vec<SecurityReport>, String> {
     Ok(reports)
 }
 
-// ========== 软链接管理 ==========
+// ========== 杞摼鎺ョ鐞?==========
 
 #[tauri::command]
 fn get_all_agents() -> Result<Vec<AgentConfig>, String> {
@@ -987,7 +1060,7 @@ fn get_symlink_agents_config() -> Result<Vec<AgentConfig>, String> {
     Ok(get_symlink_agents())
 }
 
-// 检查所有软链接状态
+// 妫€鏌ユ墍鏈夎蒋閾炬帴鐘舵€?
 #[tauri::command]
 fn check_symlink_status() -> Result<Vec<SymlinkStatus>, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
@@ -999,7 +1072,7 @@ fn check_symlink_status() -> Result<Vec<SymlinkStatus>, String> {
         let link_path = home.join(&agent.global_skills_dir);
 
         let status = if link_path.exists() {
-            // 检查是否是有效的符号链接
+            // 妫€鏌ユ槸鍚︽槸鏈夋晥鐨勭鍙烽摼鎺?
             match fs::read_link(&link_path) {
                 Ok(target) => {
                     let is_valid = target == source_dir ||
@@ -1017,7 +1090,7 @@ fn check_symlink_status() -> Result<Vec<SymlinkStatus>, String> {
                     }
                 }
                 Err(_) => {
-                    // 存在但不是符号链接（可能是普通目录）
+                    // 瀛樺湪浣嗕笉鏄鍙烽摼鎺ワ紙鍙兘鏄櫘閫氱洰褰曪級
                     SymlinkStatus {
                         agent_id: agent.id.clone(),
                         agent_name: agent.display_name.clone(),
@@ -1047,7 +1120,7 @@ fn check_symlink_status() -> Result<Vec<SymlinkStatus>, String> {
     Ok(statuses)
 }
 
-// 创建单个软链接
+// 鍒涘缓鍗曚釜杞摼鎺?
 #[tauri::command]
 fn create_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
@@ -1060,36 +1133,48 @@ fn create_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
 
     let link_path = home.join(&agent.global_skills_dir);
 
-    // 确保源目录存在
+    // 纭繚婧愮洰褰曞瓨鍦?
     if !source_dir.exists() {
         fs::create_dir_all(&source_dir).map_err(|e| e.to_string())?;
     }
 
-    // 确保链接父目录存在
+    // 纭繚閾炬帴鐖剁洰褰曞瓨鍦?
     if let Some(parent) = link_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    // 如果路径已存在，检查是否是符号链接
-    if link_path.exists() {
+    // 濡傛灉璺緞宸插瓨鍦紝妫€鏌ユ槸鍚︽槸绗﹀彿閾炬帴
+    if link_path.exists() || fs::symlink_metadata(&link_path).is_ok() {
         let metadata = fs::symlink_metadata(&link_path).map_err(|e| e.to_string())?;
         if metadata.file_type().is_symlink() {
-            // 已是符号链接，删除重建
+            // symlink, remove and recreate
             fs::remove_file(&link_path).map_err(|e| e.to_string())?;
+        } else if fs::read_link(&link_path).is_ok() {
+            // junction (Windows), remove and recreate
+            fs::remove_dir(&link_path).map_err(|e| e.to_string())?;
+        } else if metadata.is_dir() {
+            // Regular directory - migrate contents to source, then remove
+            for entry in fs::read_dir(&link_path).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let dest = source_dir.join(entry.file_name());
+                if !dest.exists() {
+                    fs::rename(entry.path(), dest).map_err(|e|
+                        format!("Failed to migrate {}: {}", entry.file_name().to_string_lossy(), e)
+                    )?;
+                }
+            }
+            // Now remove the (hopefully empty) directory
+            fs::remove_dir_all(&link_path).map_err(|e|
+                format!("Failed to remove directory {}: {}", link_path.display(), e)
+            )?;
         } else {
-            return Ok(SymlinkStatus {
-                agent_id: agent.id.clone(),
-                agent_name: agent.display_name.clone(),
-                target_path: source_dir.to_string_lossy().to_string(),
-                link_path: link_path.to_string_lossy().to_string(),
-                exists: true,
-                is_valid: false,
-                error: Some("Path exists and is not a symlink. Please remove it manually.".to_string()),
-            });
+            return Err(format!(
+                "Path {} exists and is not a symlink/junction/directory. Please remove it manually.",
+                link_path.display()
+            ));
         }
     }
 
-    // 创建符号链接
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(&source_dir, &link_path)
@@ -1098,9 +1183,23 @@ fn create_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
 
     #[cfg(windows)]
     {
-        // Windows 需要管理员权限或开发者模式
-        std::os::windows::fs::symlink_dir(&source_dir, &link_path)
-            .map_err(|e| format!("Failed to create symlink (may need admin rights): {}", e))?;
+        // Use PowerShell to create junction (no admin rights needed)
+        let output = std::process::Command::new("powershell.exe")
+            .args([
+                "-NoProfile", "-Command",
+                &format!(
+                    "New-Item -ItemType Junction -Path '{}' -Target '{}'",
+                    link_path.to_string_lossy(),
+                    source_dir.to_string_lossy()
+                )
+            ])
+            .output()
+            .map_err(|e| format!("Failed to run PowerShell: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to create junction: {}", stderr));
+        }
     }
 
     Ok(SymlinkStatus {
@@ -1114,7 +1213,7 @@ fn create_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
     })
 }
 
-// 创建所有软链接
+// 鍒涘缓鎵€鏈夎蒋閾炬帴
 #[tauri::command]
 fn create_all_symlinks() -> Result<Vec<SymlinkStatus>, String> {
     let agents = get_symlink_agents();
@@ -1138,7 +1237,7 @@ fn create_all_symlinks() -> Result<Vec<SymlinkStatus>, String> {
     Ok(results)
 }
 
-// 删除软链接
+// 鍒犻櫎杞摼鎺?
 #[tauri::command]
 fn remove_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
@@ -1150,13 +1249,16 @@ fn remove_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
 
     let link_path = home.join(&agent.global_skills_dir);
 
-    if link_path.exists() {
+    if link_path.exists() || fs::symlink_metadata(&link_path).is_ok() {
         let metadata = fs::symlink_metadata(&link_path).map_err(|e| e.to_string())?;
-        if metadata.file_type().is_symlink() {
-            fs::remove_file(&link_path).map_err(|e| e.to_string())?;
-        } else {
-            return Err("Path is not a symlink, refusing to remove".to_string());
+        let is_link = metadata.file_type().is_symlink() || fs::read_link(&link_path).is_ok();
+        if !is_link {
+            return Err("Path is not a symlink/junction, refusing to remove".to_string());
         }
+        // remove_dir works for both symlinks and junctions on Windows (doesn't follow the link)
+        fs::remove_dir(&link_path).map_err(|e|
+            format!("Failed to remove link at {}: {}", link_path.display(), e)
+        )?;
     }
 
     Ok(SymlinkStatus {
@@ -1170,7 +1272,7 @@ fn remove_symlink(agent_id: String) -> Result<SymlinkStatus, String> {
     })
 }
 
-// 获取平台信息
+// 鑾峰彇骞冲彴淇℃伅
 #[tauri::command]
 fn get_platform_info() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
@@ -1180,7 +1282,7 @@ fn get_platform_info() -> Result<serde_json::Value, String> {
     }))
 }
 
-// HTTP API 请求 (绕过 CORS)
+// HTTP API 璇锋眰 (缁曡繃 CORS)
 #[derive(Debug, Deserialize)]
 pub struct FetchApiRequest {
     pub url: String,
@@ -1244,12 +1346,21 @@ async fn fetch_api(request: FetchApiRequest) -> Result<FetchApiResponse, String>
     Ok(FetchApiResponse { status, body })
 }
 
+#[tauri::command]
+fn pick_folder() -> Result<Option<String>, String> {
+    let folder = rfd::FileDialog::new()
+        .set_title("Select Project Folder")
+        .pick_folder();
+    Ok(folder.map(|p| p.to_string_lossy().to_string()))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             scan_skills,
+            update_skill_metadata,
             import_github_skill,
             uninstall_skill,
             import_local_skill,
@@ -1266,8 +1377,11 @@ pub fn run() {
             create_all_symlinks,
             remove_symlink,
             get_platform_info,
-            fetch_api
+            fetch_api,
+            pick_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+

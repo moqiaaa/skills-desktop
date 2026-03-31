@@ -80,6 +80,7 @@ interface SkillStore {
   installSkill: (skill: MarketplaceSkill) => Promise<InstallResult>;
   uninstallSkill: (id: string) => void;
   updateSkill: (id: string, skill: Partial<InstalledSkill>) => void;
+  saveSkillMetadata: (id: string, note: string, tags: string[]) => Promise<void>;
   importFromGithub: (url: string, installPath?: string) => Promise<InstallResult>;
   importFromLocal: (sourcePath: string, installPath?: string) => Promise<InstallResult>;
   fetchProjectPaths: () => Promise<void>;
@@ -470,6 +471,8 @@ export const useSkillStore = create<SkillStore>()(
             source: s.source || 'local',
             sourceUrl: s.sourceUrl,
             commitHash: s.commitHash,
+            note: s.note || '',
+            tags: Array.isArray(s.tags) ? s.tags : [],
             hasUpdate: false
           });
 
@@ -641,6 +644,42 @@ export const useSkillStore = create<SkillStore>()(
         }));
       },
 
+      saveSkillMetadata: async (id: string, note: string, tags: string[]) => {
+        const skill = get().installedSkills.find(s => s.id === id);
+        if (!skill) {
+          throw new Error('Skill not found');
+        }
+
+        const normalizedNote = note.trim();
+        const normalizedTags = Array.from(
+          new Set(
+            tags
+              .map(tag => tag.trim())
+              .filter(tag => tag.length > 0)
+          )
+        );
+
+        await invoke('update_skill_metadata', {
+          request: {
+            skillPath: skill.localPath,
+            note: normalizedNote.length > 0 ? normalizedNote : null,
+            tags: normalizedTags.length > 0 ? normalizedTags : null
+          }
+        });
+
+        set((state) => ({
+          installedSkills: state.installedSkills.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  note: normalizedNote,
+                  tags: normalizedTags
+                }
+              : s
+          )
+        }));
+      },
+
       importFromGithub: async (url: string, installPath?: string) => {
         const { defaultInstallLocation, projectPaths, selectedProjectIndex } = get();
 
@@ -729,12 +768,18 @@ export const useSkillStore = create<SkillStore>()(
       },
 
       importFromLocal: async (sourcePath: string, installPath?: string) => {
+        const { defaultInstallLocation, projectPaths, selectedProjectIndex } = get();
         const skillName = sourcePath.split(/[\\/]/).pop() || 'unknown-skill';
+
+        let finalInstallPath = installPath;
+        if (!finalInstallPath && defaultInstallLocation === 'project' && projectPaths.length > 0) {
+          finalInstallPath = projectPaths[selectedProjectIndex] || projectPaths[0];
+        }
 
         const result: any = await invoke('import_local_skill', {
           request: {
             sourcePath,
-            installPath,
+            installPath: finalInstallPath,
             skillName
           }
         });
